@@ -1,0 +1,23 @@
+{
+  "name": "geojson-maker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Draw, style and export GeoJSON in the browser \u2014 image fills and Wikimedia Commons flag search included.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8000 --bind 0.0.0.0",
+    "serve": "node scripts/serve.mjs",
+    "test": "node tests/run.mjs",
+    "test:logic": "node tests/logic.test.mjs",
+    "test:app": "node tests/app.test.mjs",
+    "check": "node scripts/syntax-check.mjs"
+  },
+  "keywords": [
+    "geojson",
+    "map",
+    "canvas",
+    "gis",
+    "wikimedia-commons"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Draw, style and export GeoJSON — with image fills and Wikimedia Commons flag search.">
+<title>GeoJSON Maker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f6df6'/%3E%3Cpath d='M7 21.5 12.5 9l6 8.5L22 13l3.5 8.5z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Ccircle cx='22' cy='13' r='1.8' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./styles/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header id="topbar">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#2f6df6"></rect>
+        <path d="M7 21.5 12.5 9l6 8.5L22 13l3.5 8.5z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"></path>
+        <circle cx="22" cy="13" r="1.8" fill="#fff"></circle>
+      </svg>
+      <div>
+        <h1>GeoJSON Maker</h1>
+        <p>Draw &middot; Style &middot; Export</p>
+      </div>
+    </div>
+
+    <div class="toolgroup" id="tools" role="toolbar" aria-label="Drawing tools">
+      <button class="tool active" data-tool="select" title="Select / edit (V)" aria-pressed="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 8-6.5 1.5L9.5 19z"/></svg>
+        <span class="lbl">Select</span><span class="kbd">V</span>
+      </button>
+      <button class="tool" data-tool="point" title="Add point (P)" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="10" r="3"/><path d="M12 21s7-6.1 7-11a7 7 0 10-14 0c0 4.9 7 11 7 11z" stroke-linejoin="round"/></svg>
+        <span class="lbl">Point</span><span class="kbd">P</span>
+      </button>
+      <button class="tool" data-tool="line" title="Draw line (L)" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 18l6-9 4 5 4-7"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="7" r="2"/></svg>
+        <span class="lbl">Line</span><span class="kbd">L</span>
+      </button>
+      <button class="tool" data-tool="polygon" title="Draw polygon (G)" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3.5l8 5.5-3 10H7l-3-10z"/><circle cx="12" cy="3.5" r="1.6" fill="currentColor"/></svg>
+        <span class="lbl">Polygon</span><span class="kbd">G</span>
+      </button>
+      <button class="tool" data-tool="rect" title="Draw rectangle (R)" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg>
+        <span class="lbl">Box</span><span class="kbd">R</span>
+      </button>
+    </div>
+
+    <div class="toolgroup" id="history">
+      <button class="tool" id="btn-undo" title="Undo (Ctrl+Z)" aria-pressed="false" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>
+      </button>
+      <button class="tool" id="btn-redo" title="Redo (Ctrl+Shift+Z)" aria-pressed="false" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg>
+      </button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <button class="btn primary" id="btn-export-top" title="Download .geojson">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+      Export
+    </button>
+  </header>
+
+  <div id="body">
+
+    <!-- ===================== SIDEBAR ===================== -->
+    <aside id="sidebar">
+      <nav id="tabs" role="tablist">
+        <button data-tab="features" class="active" role="tab" aria-selected="true">Features</button>
+        <button data-tab="styles" role="tab" aria-selected="false">Styles</button>
+        <button data-tab="data" role="tab" aria-selected="false">Data</button>
+      </nav>
+
+      <div id="panels">
+
+        <!-- ---------- FEATURES ---------- -->
+        <section class="panel active" data-panel="features" role="tabpanel">
+          <div class="panel-head">
+            <h2>Features</h2>
+            <span class="badge" id="feat-count">0</span>
+          </div>
+          <div class="row tight" style="margin-bottom:10px">
+            <button class="btn small grow" id="btn-zoom-all">Zoom to all</button>
+            <button class="btn small grow" id="btn-clear-all">Clear all</button>
+          </div>
+          <div id="feat-list" class="list"></div>
+          <div id="feat-empty" class="empty">
+            <b>Nothing drawn yet</b>
+            The canvas starts empty. Pick a tool above and click the map
+            to draw your first shape.
+          </div>
+
+          <div id="feat-editor" hidden>
+            <div class="divider"></div>
+            <div class="group">
+              <legend>Selected feature</legend>
+              <div class="field">
+                <label for="prop-name">Name</label>
+                <input type="text" id="prop-name" placeholder="Untitled feature" autocomplete="off">
+              </div>
+              <div class="field">
+                <label for="prop-desc">Description</label>
+                <textarea id="prop-desc" placeholder="Optional notes"></textarea>
+              </div>
+              <div class="field">
+                <div class="field-label"><span>Properties</span>
+                  <button class="btn small ghost" id="btn-add-prop">+ Add</button>
+                </div>
+                <div id="prop-list"></div>
+              </div>
+              <div class="kv" id="feat-stats"></div>
+              <div class="divider"></div>
+              <div class="row tight">
+                <button class="btn small grow" id="btn-zoom-feat">Zoom to</button>
+                <button class="btn small grow" id="btn-dup-feat">Duplicate</button>
+                <button class="btn small danger grow" id="btn-del-feat">Delete</button>
+              </div>
+              <div class="row tight" style="margin-top:6px">
+                <button class="btn small grow" id="btn-up-feat" title="Raise draw order">Bring forward</button>
+                <button class="btn small grow" id="btn-down-feat" title="Lower draw order">Send back</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- STYLES ---------- -->
+        <section class="panel" data-panel="styles" role="tabpanel">
+          <div class="panel-head">
+            <h2>Styles</h2>
+            <span class="badge accent" id="style-scope">Defaults for new</span>
+          </div>
+
+          <div class="row tight" style="margin-bottom:11px">
+            <button class="btn small grow" id="btn-apply-all">Apply to all features</button>
+            <button class="btn small ghost" id="btn-reset-style" title="Back to plain defaults">Reset</button>
+          </div>
+
+          <!-- FILL -->
+          <fieldset class="group">
+            <legend>Fill</legend>
+
+            <div class="seg cols-3" id="fill-mode-seg">
+              <label class="sel"><input type="radio" name="fillMode" value="solid" checked><span>Colour</span></label>
+              <label><input type="radio" name="fillMode" value="image"><span>Image</span></label>
+              <label><input type="radio" name="fillMode" value="commons"><span>Flag search</span></label>
+            </div>
+
+            <!-- solid -->
+            <div class="mode-body" data-mode="solid">
+              <div class="field row" style="align-items:flex-end">
+                <div class="grow">
+                  <label for="fill-color">Fill colour</label>
+                  <input type="color" id="fill-color" value="#2f6df6">
+                </div>
+                <div class="grow" style="flex:2 1 0">
+                  <label for="fill-opacity">Opacity <output id="fill-opacity-out">25%</output></label>
+                  <input type="range" id="fill-opacity" min="0" max="100" step="1" value="25">
+                </div>
+              </div>
+            </div>
+
+            <!-- image -->
+            <div class="mode-body" data-mode="image" hidden>
+              <div id="img-source-card"></div>
+              <div class="row tight" style="margin-bottom:9px">
+                <button class="btn small grow" id="btn-upload">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V5"/><path d="M7 10l5-5 5 5"/><path d="M4 20h16"/></svg>
+                  Upload
+                </button>
+                <button class="btn small grow" id="btn-clear-img">Remove</button>
+              </div>
+              <div class="field">
+                <label for="img-url">…or paste an image URL</label>
+                <div class="row tight">
+                  <input type="url" id="img-url" placeholder="https://example.com/texture.png" autocomplete="off">
+                  <button class="btn small" id="btn-load-url">Load</button>
+                </div>
+              </div>
+              <input type="file" id="img-file" accept="image/*" class="sr-only">
+            </div>
+
+            <!-- commons -->
+            <div class="mode-body" data-mode="commons" hidden>
+              <div class="field">
+                <label for="cc-q">Search Wikimedia Commons for flags</label>
+                <div class="row tight">
+                  <input type="search" id="cc-q" placeholder="e.g. Japan, Brazil, Bavaria" autocomplete="off">
+                  <button class="btn small primary" id="cc-search">Search</button>
+                </div>
+              </div>
+              <div class="row tight" style="margin-bottom:6px">
+                <label class="row tight" style="font-size:11px"><input type="checkbox" id="cc-flagonly" checked> flags only</label>
+                <span class="grow"></span>
+                <select id="cc-sort" style="width:auto;font-size:11px">
+                  <option value="relevance">Relevance</option>
+                  <option value="newest">Newest first</option>
+                </select>
+              </div>
+              <div id="cc-status" class="hint" style="margin-top:0"></div>
+              <div id="cc-results" class="results"></div>
+              <div id="cc-picked"></div>
+            </div>
+
+            <!-- shared image options (visible for image + commons fills) -->
+            <div id="img-options" hidden>
+              <div class="divider"></div>
+              <div class="field">
+                <div class="field-label"><span>How the image covers the shape</span></div>
+                <div class="seg cols-3" id="img-layout-seg">
+                  <label class="sel"><input type="radio" name="imgLayout" value="tile"><span>Tile</span></label>
+                  <label><input type="radio" name="imgLayout" value="stretch"><span>Stretch</span></label>
+                  <label><input type="radio" name="imgLayout" value="center"><span>Once</span></label>
+                </div>
+              </div>
+
+              <div id="opt-tile">
+                <div class="field">
+                  <div class="field-label"><span>Zoom behaviour</span>
+                    <span class="badge" id="anchor-badge">Screen size</span>
+                  </div>
+                  <div class="seg cols-2" id="img-anchor-seg">
+                    <label class="sel"><input type="radio" name="imgAnchor" value="screen">
+                      <span>Constant size<br><small style="font-weight:400;color:var(--ink-3)">same on screen at any zoom</small></span></label>
+                    <label><input type="radio" name="imgAnchor" value="ground">
+                      <span>Grows with zoom<br><small style="font-weight:400;color:var(--ink-3)">fixed size on the ground</small></span></label>
+                  </div>
+                </div>
+                <div class="grid-2">
+                  <div class="field">
+                    <label for="img-size">Tile size <output id="img-size-unit">px</output></label>
+                    <input type="number" id="img-size" min="4" max="4000" step="1" value="72">
+                  </div>
+                  <div class="field">
+                    <label for="img-rotation">Rotation</label>
+                    <div class="row tight">
+                      <input type="range" id="img-rotation" min="-180" max="180" step="1" value="0">
+                      <output id="img-rotation-out" style="width:34px;text-align:right;font-family:var(--mono);font-size:10.5px">0&deg;</output>
+                    </div>
+                  </div>
+                </div>
+                <div class="grid-2">
+                  <div class="field">
+                    <label for="img-ox">Offset X</label>
+                    <input type="number" id="img-ox" step="1" value="0">
+                  </div>
+                  <div class="field">
+                    <label for="img-oy">Offset Y</label>
+                    <input type="number" id="img-oy" step="1" value="0">
+                  </div>
+                </div>
+                <label class="row tight" style="font-size:11.5px;margin-top:2px">
+                  <input type="checkbox" id="img-no-upscale" checked>
+                  Don't blur past the image's own resolution
+                </label>
+              </div>
+
+              <div id="opt-stretch" hidden>
+                <div class="field">
+                  <div class="field-label"><span>Fit</span></div>
+                  <div class="seg cols-2" id="img-fit-seg">
+                    <label class="sel"><input type="radio" name="imgFit" value="cover"><span>Cover shape</span></label>
+                    <label><input type="radio" name="imgFit" value="contain"><span>Fit inside</span></label>
+                  </div>
+                </div>
+              </div>
+
+              <div id="opt-center" hidden>
+                <div class="grid-2">
+                  <div class="field">
+                    <label for="img-cwidth">Width (px)</label>
+                    <input type="number" id="img-cwidth" min="4" max="4000" step="1" value="120">
+                  </div>
+                  <div class="field">
+                    <label for="img-rotation2">Rotation</label>
+                    <input type="number" id="img-rotation2" min="-180" max="180" step="1" value="0">
+                  </div>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="img-opacity">Image opacity <output id="img-opacity-out">100%</output></label>
+                  <input type="range" id="img-opacity" min="0" max="100" step="1" value="100">
+                </div>
+                <div class="field">
+                  <label for="img-backdrop">Colour behind image</label>
+                  <div class="row tight">
+                    <input type="checkbox" id="img-backdrop-on">
+                    <input type="color" id="img-backdrop" value="#ffffff">
+                  </div>
+                </div>
+              </div>
+
+              <p class="hint">
+                Image fills are rendered through a resolution pyramid, so the picture stays
+                solid and even when you zoom far out instead of fading to a pale blur, and stays
+                sharp when you zoom in instead of turning into coarse blocks.
+              </p>
+            </div>
+          </fieldset>
+
+          <!-- STROKE -->
+          <fieldset class="group">
+            <legend>Outline</legend>
+            <div class="field row" style="align-items:flex-end">
+              <div class="grow">
+                <label for="stroke-color">Colour</label>
+                <input type="color" id="stroke-color" value="#2f6df6">
+              </div>
+              <div class="grow" style="flex:2 1 0">
+                <label for="stroke-width">Width <output id="stroke-width-out">2 px</output></label>
+                <input type="range" id="stroke-width" min="0" max="24" step="0.5" value="2">
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="stroke-opacity">Opacity <output id="stroke-opacity-out">100%</output></label>
+                <input type="range" id="stroke-opacity" min="0" max="100" step="1" value="100">
+              </div>
+              <div class="field">
+                <label for="stroke-dash">Dash</label>
+                <select id="stroke-dash">
+                  <option value="solid">Solid</option>
+                  <option value="dashed">Dashed</option>
+                  <option value="dotted">Dotted</option>
+                  <option value="dashdot">Dash &amp; dot</option>
+                </select>
+              </div>
+            </div>
+          </fieldset>
+
+          <!-- LABEL -->
+          <fieldset class="group">
+            <legend>Label</legend>
+            <label class="row tight" style="font-size:12px;margin-bottom:8px">
+              <input type="checkbox" id="label-show"> Show the feature name on the map
+            </label>
+            <div class="grid-2">
+              <div class="field">
+                <label for="label-size">Size <output id="label-size-out">12 px</output></label>
+                <input type="range" id="label-size" min="8" max="36" step="1" value="12">
+              </div>
+              <div class="field">
+                <label for="label-color">Text colour</label>
+                <input type="color" id="label-color" value="#131a24">
+              </div>
+            </div>
+          </fieldset>
+        </section>
+
+        <!-- ---------- DATA ---------- -->
+        <section class="panel" data-panel="data" role="tabpanel">
+          <div class="panel-head">
+            <h2>Data</h2>
+            <span class="badge" id="data-count">0 features</span>
+          </div>
+
+          <fieldset class="group">
+            <legend>Import</legend>
+            <div class="dropzone" id="dropzone" tabindex="0" role="button">
+              Drop a <b>.geojson</b> / <b>.json</b> file here, or click to browse
+            </div>
+            <input type="file" id="file-input" accept=".geojson,.json,application/geo+json,application/json" class="sr-only">
+            <label class="row tight" style="font-size:11.5px;margin-top:8px">
+              <input type="checkbox" id="import-merge" checked> Keep what's already on the map
+            </label>
+            <p class="hint">
+              Accepts FeatureCollection, Feature, bare Geometry, TopoJSON-free plain GeoJSON,
+              and newline-delimited features. Styling written by this app
+              (<code>fill</code>, <code>stroke</code>, <code>x-image-fill</code>) is read back.
+            </p>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Export</legend>
+            <div class="row tight" style="margin-bottom:8px">
+              <button class="btn small grow primary" id="btn-download">Download .geojson</button>
+              <button class="btn small grow" id="btn-copy">Copy JSON</button>
+            </div>
+            <label class="row tight" style="font-size:11.5px;margin-bottom:8px">
+              <input type="checkbox" id="exp-indent" checked> Pretty-print
+            </label>
+            <label class="row tight" style="font-size:11.5px;margin-bottom:8px">
+              <input type="checkbox" id="exp-style" checked> Include styling in properties
+            </label>
+            <label class="row tight" style="font-size:11.5px">
+              <input type="checkbox" id="exp-selected"> Selected features only
+            </label>
+            <div class="divider"></div>
+            <textarea id="json-box" spellcheck="false" aria-label="GeoJSON output"></textarea>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Workspace</legend>
+            <p class="hint" style="margin-top:0" id="save-note"></p>
+            <div class="row tight">
+              <button class="btn small grow" id="btn-save-now">Save snapshot</button>
+              <button class="btn small danger grow" id="btn-wipe">Erase saved work</button>
+            </div>
+          </fieldset>
+        </section>
+
+      </div>
+    </aside>
+
+    <!-- ===================== MAP ===================== -->
+    <main id="mapwrap">
+      <canvas id="map"></canvas>
+
+      <div id="map-controls">
+        <div class="map-card col">
+          <button class="map-btn" id="btn-zoom-in" title="Zoom in (+)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button class="map-btn" id="btn-zoom-out" title="Zoom out (-)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
+          </button>
+        </div>
+        <div class="map-card">
+          <select id="basemap" title="Basemap">
+            <option value="osm">OpenStreetMap</option>
+            <option value="light">Light (CARTO)</option>
+            <option value="dark">Dark (CARTO)</option>
+            <option value="none">No basemap</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="hint"></div>
+
+      <div id="statusbar">
+        <span id="st-coords">&mdash;</span>
+        <span class="sep"></span>
+        <span>z <b id="st-zoom">2.0</b></span>
+        <span class="sep"></span>
+        <span><b id="st-count">0</b> features</span>
+      </div>
+
+      <div id="attribution"></div>
+      <div id="toasts"></div>
+    </main>
+
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

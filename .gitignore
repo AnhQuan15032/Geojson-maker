@@ -1,0 +1,19 @@
+# Dependencies (this project has none, but just in case)
+node_modules/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs and scratch files
+*.log
+npm-debug.log*
+scratch/
+*.tmp
+
+# Local data you may export while testing
+exports/
+*.local.geojson
