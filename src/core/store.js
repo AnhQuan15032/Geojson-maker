@@ -106,10 +106,11 @@ export class Store extends Emitter {
   /**
    * Record the current state for undo, run `fn`, then announce the change.
    * `key` lets a burst of related edits (typing, dragging a slider) collapse
-   * into a single undo step.
+   * into a single undo step. Pass `discrete` for a one-shot action that must
+   * stay undoable on its own even when it repeats the action before it.
    */
-  mutate(key, fn) {
-    this._push(key);
+  mutate(key, fn, { discrete = false } = {}) {
+    this._push(key, discrete);
     const result = fn(this);
     this._future.length = 0;
     this._dirty = true;
@@ -134,10 +135,10 @@ export class Store extends Emitter {
     this.emit('change', { reason });
   }
 
-  _push(key) {
+  _push(key, discrete = false) {
     const now = Date.now();
     const last = this._history[this._history.length - 1];
-    if (key && last && last.key === key && now - last.t < 900) {
+    if (!discrete && key && last && last.key === key && now - last.t < 900) {
       last.t = now;
       return;
     }

@@ -25,16 +25,24 @@ document.getElementById('mapwrap').setSize(1000, 700);
 document.getElementById('map').setSize(1000, 700);
 document.getElementById('sidebar').setSize(340, 700);
 
-// Offline canned responses for the Commons API.
+// Offline canned responses: one queue for the Commons API, one for coastline data.
 const commonsResponses = [];
+const landResponses = [];
 Object.defineProperty(globalThis, 'fetch', {
   configurable: true,
   writable: true,
   value: async (url) => {
-    const body = commonsResponses.shift();
+    const queue = /ne_\d+m_(land|lakes)\.geojson/.test(String(url)) ? landResponses : commonsResponses;
+    const body = queue.shift();
     if (body === undefined) throw new Error(`unexpected fetch: ${url}`);
     if (body instanceof Error) throw body;
-    return { ok: true, status: 200, json: async () => body };
+    const text = typeof body === 'string' ? body : JSON.stringify(body);
+    return {
+      ok: true,
+      status: 200,
+      text: async () => text,
+      json: async () => (typeof body === 'string' ? JSON.parse(body) : body),
+    };
   },
 });
 
@@ -783,6 +791,300 @@ await test('Clear all empties the map and can be undone', async () => {
   assert.equal($('#feat-empty').hidden, false);
   store.undo();
   assert.ok(store.count > 0);
+});
+
+console.log('\ncoastline — cut sea');
+
+const { coastline } = app;
+
+/** A synthetic world: land everywhere west of 10°E, with one lake inland. */
+const LAND_FC = {
+  type: 'FeatureCollection',
+  features: [{
+    type: 'Feature',
+    properties: { name: 'West land' },
+    geometry: { type: 'Polygon', coordinates: [[[-180, -85], [10, -85], [10, 85], [-180, 85], [-180, -85]]] },
+  }],
+};
+const LAKES_FC = {
+  type: 'FeatureCollection',
+  features: [{
+    type: 'Feature',
+    properties: { name: 'Inland lake' },
+    geometry: { type: 'Polygon', coordinates: [[[-40, -20], [-20, -20], [-20, 0], [-40, 0], [-40, -20]]] },
+  }],
+};
+const rectGeom = (a, b, c, d) => ({ type: 'Polygon', coordinates: [[[a, b], [c, b], [c, d], [a, d], [a, b]]] });
+const toastsText = () => document.getElementById('toasts').textContent;
+
+await test('the coastline starts unloaded and the cut buttons wait for features', () => {
+  store.clearAll();
+  store.clearHistory();
+  assert.equal(coastline.service.isReady, false);
+  assert.match($('#land-status').textContent, /No coastline loaded yet/);
+  assert.equal($('#btn-cut-sea').disabled, true);
+  assert.equal($('#btn-cut-sea-all').disabled, true);
+  assert.equal($('#btn-land-clear').disabled, true);
+});
+
+await test('Load coastline downloads Natural Earth and reports what it got', async () => {
+  landResponses.push(LAND_FC);
+  click($('#btn-land-load'));
+  await flush();
+  assert.equal(coastline.service.isReady, true);
+  assert.equal(coastline.service.state.features, 1);
+  assert.match($('#land-status').textContent, /Natural Earth 1:50m/);
+  assert.match($('#land-status').textContent, /1 land polygon/);
+  assert.equal($('#btn-land-load').textContent, 'Reload coastline');
+  assert.equal($('#btn-cut-sea').disabled, true, 'still no features on the map');
+});
+
+await test('Cut sea trims a shape that hangs out over the ocean', async () => {
+  store.addGeometry(rectGeom(0, 0, 20, 10), null, { name: 'Straddler' });
+  await flush();
+  const feature = store.features[store.features.length - 1];
+  store.select(feature.id);
+  assert.equal($('#btn-cut-sea').textContent, 'Cut sea (1)');
+
+  click($('#btn-cut-sea'));
+  await flush();
+
+  const ring = feature.geometry.coordinates[0];
+  const lngs = ring.map((p) => p[0]);
+  assert.ok(Math.max(...lngs) < 10.6, `east edge should be cut at the coast, got ${Math.max(...lngs)}`);
+  assert.ok(Math.max(...lngs) > 9.4, `cut too far: ${Math.max(...lngs)}`);
+  assert.ok(Math.min(...lngs) < 0.6, 'the on-land part must survive');
+  assert.ok(coastline.lastRun);
+  assert.ok(coastline.lastRun.removed > 0);
+  assert.match($('#coast-info').textContent, /Sea removed/);
+  assert.match(toastsText(), /Cut Straddler to the shoreline/);
+  assert.match(toastsText(), /removed \d+%/);
+});
+
+await test('the cut is a single undo step that restores the drawn shape', async () => {
+  const id = store.features[store.features.length - 1].id;
+  const cut = JSON.stringify(store.byId(id).geometry);
+  const historyBefore = store.canUndo;
+  assert.equal(historyBefore, true);
+
+  store.undo();
+  await flush();
+  // Undo replaces the feature objects, so look the shape up again.
+  const restored = store.byId(id).geometry;
+  assert.notEqual(JSON.stringify(restored), cut);
+  const lngs = restored.coordinates[0].map((p) => p[0]);
+  assert.ok(Math.abs(Math.max(...lngs) - 20) < 1e-9, 'back to what was drawn');
+  assert.equal(coastline.lastRun, null);
+
+  store.redo();
+  await flush();
+  assert.equal(JSON.stringify(store.byId(id).geometry), cut);
+});
+
+await test('a shape drawn entirely at sea is left alone with a warning', async () => {
+  store.addGeometry(rectGeom(40, 40, 60, 60), null, { name: 'Open ocean' });
+  await flush();
+  const feature = store.features[store.features.length - 1];
+  store.select(feature.id);
+  const before = JSON.stringify(feature.geometry);
+  const historyDepth = store.canUndo;
+
+  click($('#btn-cut-sea'));
+  await flush();
+
+  assert.equal(JSON.stringify(feature.geometry), before, 'geometry untouched');
+  assert.match(toastsText(), /entirely over water/);
+  assert.equal(historyDepth, true);
+});
+
+await test('a line keeps only its on-land stretch', async () => {
+  store.addGeometry({ type: 'LineString', coordinates: [[0, 0], [20, 0]] }, null, { name: 'Coast road' });
+  await flush();
+  const feature = store.features[store.features.length - 1];
+  store.select(feature.id);
+  click($('#btn-cut-sea'));
+  await flush();
+  assert.equal(feature.geometry.type, 'LineString');
+  assert.equal(feature.geometry.coordinates.length, 2);
+  const [first, last] = feature.geometry.coordinates;
+  assert.ok(Math.abs(first[0]) < 1e-9);
+  assert.ok(Math.abs(last[0] - 10) < 0.05, `shore crossing at ${last[0]}`);
+});
+
+await test('points at sea are dropped, points on land are kept', async () => {
+  store.addGeometry({ type: 'MultiPoint', coordinates: [[0, 0], [50, 0], [-5, 5]] }, null, { name: 'Buoys' });
+  await flush();
+  const feature = store.features[store.features.length - 1];
+  store.select(feature.id);
+  click($('#btn-cut-sea'));
+  await flush();
+  assert.equal(feature.geometry.type, 'MultiPoint');
+  assert.equal(feature.geometry.coordinates.length, 2);
+  assert.ok(feature.geometry.coordinates.every((p) => p[0] <= 10));
+});
+
+await test('All features cuts everything in one undo step', async () => {
+  store.clearSelection();
+  const before = store.features.map((f) => JSON.stringify(f.geometry));
+  click($('#btn-cut-sea-all'));
+  await flush();
+  // The shape that lies wholly in the ocean is reported, not cut.
+  assert.equal(coastline.lastRun.features + coastline.lastRun.atSea, store.features.length);
+  assert.equal(coastline.lastRun.atSea, 1);
+  const after = store.features.map((f) => JSON.stringify(f.geometry));
+  assert.notDeepEqual(after, before);
+  // Nothing east of 10°E survives anywhere on the map (except the untouched ocean shape).
+  for (const feature of store.features.filter((f) => f.properties.name !== 'Open ocean')) {
+    const lngs = [];
+    const walk = (node) => {
+      if (!Array.isArray(node)) return;
+      if (typeof node[0] === 'number') { lngs.push(node[0]); return; }
+      node.forEach(walk);
+    };
+    walk(feature.geometry.coordinates);
+    assert.ok(Math.max(...lngs) <= 10.6, `${feature.properties.name} still reaches ${Math.max(...lngs)}°E`);
+  }
+  store.undo();
+  await flush();
+  assert.deepEqual(store.features.map((f) => JSON.stringify(f.geometry)), before);
+  store.redo();
+  await flush();
+});
+
+await test('cut detail and lake settings are remembered and change the result', async () => {
+  change($('#land-precision'), 'high');
+  change($('#land-lakes'), true);
+  const prefs = JSON.parse(window.localStorage.getItem('geojson-maker.land.prefs.v1'));
+  assert.equal(prefs.precision, 'high');
+  assert.equal(prefs.cutLakes, true);
+
+  landResponses.push(LAKES_FC);
+  store.clearAll();
+  store.clearHistory();
+  store.addGeometry(rectGeom(-60, -40, 0, 20), null, { name: 'Lake country' });
+  await flush();
+  store.select(store.features[store.features.length - 1].id);
+
+  click($('#btn-cut-sea'));
+  await flush();
+
+  const feature = store.features[store.features.length - 1];
+  assert.equal(coastline.service.land.hasLakes, true, 'the lakes layer was fetched on demand');
+  assert.equal(feature.geometry.coordinates.length, 2, 'the lake should be cut out as a hole');
+  assert.match($('#coast-info').textContent, /Holes/);
+});
+
+await test('a lake left unchecked stays land', async () => {
+  change($('#land-lakes'), false);
+  store.undo();
+  await flush();
+  store.select(store.features[store.features.length - 1].id);
+  click($('#btn-cut-sea'));
+  await flush();
+  const feature = store.features[store.features.length - 1];
+  assert.equal(feature.geometry.coordinates.length, 1, 'no hole when lakes are not cut');
+});
+
+await test('your own land GeoJSON can replace the downloaded coastline', async () => {
+  const own = JSON.stringify({
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', properties: {}, geometry: rectGeom(100, -10, 120, 10) }],
+  });
+  const fileInput = $('#land-file');
+  fileInput.files = [{ name: 'my-coast.geojson', text: async () => own }];
+  fileInput.dispatchEvent(event('change', { target: fileInput }));
+  await flush();
+
+  assert.equal(coastline.service.state.source, 'custom');
+  assert.match($('#land-status').textContent, /my-coast\.geojson/);
+  assert.match(toastsText(), /Using my-coast\.geojson as the coastline/);
+
+  store.addGeometry(rectGeom(90, -5, 130, 5), null, { name: 'Custom cut' });
+  await flush();
+  store.select(store.features[store.features.length - 1].id);
+  click($('#btn-cut-sea'));
+  await flush();
+  const feature = store.features[store.features.length - 1];
+  const lngs = feature.geometry.coordinates[0].map((p) => p[0]);
+  assert.ok(Math.min(...lngs) > 99.4 && Math.max(...lngs) < 120.6, `cut to the custom shore: ${lngs}`);
+});
+
+await test('a file with no polygons is rejected, not silently accepted', async () => {
+  const fileInput = $('#land-file');
+  fileInput.files = [{ name: 'points.geojson', text: async () => JSON.stringify({ type: 'Point', coordinates: [0, 0] }) }];
+  fileInput.dispatchEvent(event('change', { target: fileInput }));
+  await flush();
+  assert.match(toastsText(), /Could not use points\.geojson/);
+});
+
+await test('an unreachable coastline says so and offers the file fallback', async () => {
+  coastline.service.clear();
+  for (let i = 0; i < 3; i++) landResponses.push(new Error('offline'));
+  click($('#btn-land-load'));
+  await flush();
+  assert.equal(coastline.service.isReady, false);
+  assert.match($('#land-status').textContent, /Could not load/);
+  assert.equal($('#btn-land-clear').disabled, false, 'you can still forget the failed attempt');
+
+  // Cutting without data tries once more, then explains itself.
+  for (let i = 0; i < 3; i++) landResponses.push(new Error('offline'));
+  store.select(store.features[store.features.length - 1].id);
+  const result = await coastline.cut('selected');
+  assert.equal(result, null);
+  assert.match(toastsText(), /Coastline download failed/);
+  assert.match(toastsText(), /your own land GeoJSON/);
+});
+
+await test('Forget drops the coastline and the buttons go back to sleep', async () => {
+  landResponses.push(LAND_FC);
+  await coastline.load('ne50');
+  await flush();
+  assert.equal(coastline.service.isReady, true);
+  click($('#btn-land-clear'));
+  await flush();
+  assert.equal(coastline.service.isReady, false);
+  assert.match($('#land-status').textContent, /No coastline loaded yet/);
+  assert.equal(window.localStorage.getItem('geojson-maker.land.v1.ne50'), null);
+});
+
+await test('a cached coastline comes back on boot without the network', async () => {
+  landResponses.push(LAND_FC);
+  await coastline.load('ne50');
+  await flush();
+  assert.equal(coastline.service.state.cached, true);
+
+  const reborn = new coastline.constructor({ store, view, toast: () => {}, switchTab: () => {} });
+  assert.equal(reborn.service.isReady, true, 'restored from localStorage');
+  assert.equal(landResponses.length, 0, 'no download was needed');
+  assert.match(reborn.service.state.detail, /restored from this browser/);
+});
+
+await test('cutting a whole map stays responsive and remains one undo step', async () => {
+  store.clearAll();
+  store.clearHistory();
+  // Nine slabs straddling the coast: enough to take the yielding branch.
+  for (let i = 0; i < 9; i++) {
+    store.addGeometry(rectGeom(0, -60 + i * 12, 20, -52 + i * 12), null, { name: `Slab ${i + 1}` });
+  }
+  await flush();
+  assert.equal(store.features.length, 9);
+
+  const stats = await coastline.cut('all');   // called directly: a second panel is bound in the test above
+  await flush();
+
+  assert.equal(stats.features, 9);
+  assert.equal(stats.atSea, 0);
+  for (const feature of store.features) {
+    const lngs = feature.geometry.coordinates[0].map((p) => p[0]);
+    assert.ok(Math.max(...lngs) <= 10.6, `${feature.properties.name} reaches ${Math.max(...lngs)}°E`);
+    assert.ok(Math.min(...lngs) >= -0.6);
+  }
+
+  store.undo();
+  await flush();
+  assert.equal(store.features.length, 9);
+  assert.ok(store.features.every((f) => f.geometry.coordinates[0].some((p) => p[0] > 19)),
+    'one undo step restored all nine drawn shapes');
 });
 
 /* ------------------------------------------------------------------ report */

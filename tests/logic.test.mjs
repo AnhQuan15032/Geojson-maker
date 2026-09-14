@@ -447,6 +447,23 @@ test('rapid edits with the same key collapse into one undo step', () => {
   assert.ok(Math.abs(store.byId(f.id).style['fill-opacity'] - 0.25) < 1e-9);
 });
 
+test('a discrete edit is its own undo step even inside the burst window', () => {
+  const store = new Store();
+  const f = store.addGeometry({ type: 'Polygon', coordinates: [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]] });
+  const before = store._history.length;
+  // Same key, back to back — but each click must undo on its own.
+  for (const lng of [1, 0.5]) {
+    store.mutate('cut-sea', () => {
+      f.geometry = { type: 'Polygon', coordinates: [[[0, 0], [lng, 0], [lng, 2], [0, 2], [0, 0]]] };
+    }, { discrete: true });
+  }
+  assert.equal(store._history.length, before + 2);
+  store.undo();
+  assert.equal(store.byId(f.id).geometry.coordinates[0][1][0], 1, 'one cut undone');
+  store.undo();
+  assert.equal(store.byId(f.id).geometry.coordinates[0][1][0], 2, 'back to what was drawn');
+});
+
 test('edits with different keys stay separate undo steps', () => {
   const store = new Store();
   const f = store.addGeometry({ type: 'Point', coordinates: [0, 0] });

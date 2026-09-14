@@ -7,6 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const steps = [
   ['static checks', 'scripts/syntax-check.mjs'],
   ['logic tests', 'tests/logic.test.mjs'],
+  ['coastline tests', 'tests/land.test.mjs'],
   ['app tests', 'tests/app.test.mjs'],
 ];
 

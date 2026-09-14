@@ -16,6 +16,7 @@ import { ToolManager } from './tools.js';
 import { FeaturesPanel } from './ui/features.js';
 import { StylesPanel } from './ui/styles.js';
 import { DataPanel } from './ui/data.js';
+import { CoastlinePanel } from './ui/land.js';
 import { initToasts, toast } from './ui/toast.js';
 import { saveWorkspace, loadWorkspace, clearWorkspace } from './state/persist.js';
 
@@ -49,6 +50,8 @@ const dataPanel = new DataPanel({
   toast,
   onSaveToggle: (enabled) => { autosave = enabled; },
 });
+
+const coastline = new CoastlinePanel({ store, toast, switchTab });
 
 images.onChange = () => {
   view.requestRender();
@@ -163,6 +166,9 @@ view.on('move', () => {
 
 store.on('change', () => {
   $('#st-count').textContent = String(store.count);
+  // Every panel edits through the store, so repaint from here rather than
+  // hoping each caller remembers to.
+  view.requestRender();
   queueSave();
 });
 $('#st-count').textContent = String(store.count);
@@ -297,4 +303,7 @@ function preloadImages() {
 })();
 
 /* Handy for poking at the app from the console. */
-window.geojsonMaker = { store, view, renderer, images, tools, panels: { featuresPanel, stylesPanel, dataPanel } };
+window.geojsonMaker = {
+  store, view, renderer, images, tools, coastline,
+  panels: { featuresPanel, stylesPanel, dataPanel, coastline },
+};

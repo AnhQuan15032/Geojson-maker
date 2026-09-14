@@ -94,6 +94,23 @@
             to draw your first shape.
           </div>
 
+          <fieldset class="group" id="coast-group">
+            <legend>Coastline</legend>
+            <div class="row tight">
+              <button class="btn small grow primary" id="btn-cut-sea"
+                      title="Cut the selected features back to the shoreline">Cut sea</button>
+              <button class="btn small grow" id="btn-cut-sea-all"
+                      title="Cut every feature back to the shoreline">All features</button>
+            </div>
+            <p class="hint">
+              Trims what you drew to the real shoreline: the part of a shape that
+              hangs over the ocean is cut away. Lines keep only their on-land
+              stretches, points at sea are dropped. Coastline data is loaded in
+              the <b>Data</b> tab.
+            </p>
+            <div class="kv" id="coast-info"></div>
+          </fieldset>
+
           <div id="feat-editor" hidden>
             <div class="divider"></div>
             <div class="group">
@@ -393,6 +410,45 @@
             </label>
             <div class="divider"></div>
             <textarea id="json-box" spellcheck="false" aria-label="GeoJSON output"></textarea>
+          </fieldset>
+
+          <fieldset class="group" id="land-group">
+            <legend>Coastline data</legend>
+            <div class="field">
+              <label for="land-source">Shoreline</label>
+              <select id="land-source">
+                <option value="ne110">Natural Earth 1:110m — small download, coarse</option>
+                <option value="ne50" selected>Natural Earth 1:50m — balanced</option>
+                <option value="ne10">Natural Earth 1:10m — detailed, large download</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="land-precision">Cut detail</label>
+              <select id="land-precision">
+                <option value="fast">Fast — quicker, blockier shore</option>
+                <option value="balanced" selected>Balanced</option>
+                <option value="high">High — slowest, follows bays and islands</option>
+              </select>
+            </div>
+            <label class="row tight" style="font-size:11.5px;margin:8px 0">
+              <input type="checkbox" id="land-lakes"> Also cut lakes and inland water
+            </label>
+            <div class="row tight">
+              <button class="btn small grow primary" id="btn-land-load">Load coastline</button>
+              <button class="btn small ghost" id="btn-land-clear" title="Drop the loaded coastline from this browser">Forget</button>
+            </div>
+            <div class="divider"></div>
+            <div class="field">
+              <div class="field-label"><span>Or use your own land polygons</span></div>
+              <input type="file" id="land-file" accept=".geojson,.json,application/geo+json,application/json"
+                     aria-label="Your own land polygons as GeoJSON">
+            </div>
+            <p class="hint" id="land-status">No coastline loaded yet.</p>
+            <p class="hint" style="margin-top:4px">
+              Shorelines come from <b>Natural Earth</b> (public domain), fetched
+              when you ask for them and cached in this browser. Nothing is sent
+              anywhere else, and your own file always works offline.
+            </p>
           </fieldset>
 
           <fieldset class="group">
