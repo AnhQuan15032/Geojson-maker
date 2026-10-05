@@ -1,5 +1,5 @@
 {
-  "name": "geojson-studio",
+  "name": "geojson-maker",
   "compatibility_date": "2026-10-03",
   "assets": {
     "directory": "./dist"
