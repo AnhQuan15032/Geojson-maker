@@ -21,7 +21,11 @@
     "migrate:split": "node scripts/migrate/split-engine.mjs",
     "migrate:jsx": "node scripts/migrate/generate-jsx.mjs",
     "migrate:icons": "node scripts/migrate/generate-icons.mjs",
-    "migrate:actions": "node scripts/migrate/generate-actions.mjs"
+    "migrate:actions": "node scripts/migrate/generate-actions.mjs",
+    "prepare": "node -e \"const fs=require('fs'); if(!fs.existsSync('dist')){console.log('dist missing — running vite build...'); require('child_process').execSync('npm run build',{stdio:'inherit'})}\"",
+    "deploy": "npm run build && npx wrangler deploy",
+    "deploy:versions": "npm run build && npx wrangler versions upload",
+    "preview:deploy": "npm run build && npx wrangler preview"
   },
   "dependencies": {
     "@geoman-io/leaflet-geoman-free": "2.17.0",
