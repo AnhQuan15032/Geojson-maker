@@ -1,0 +1,50 @@
+{
+  "name": "geojson-studio",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "version": "1.0.0",
+  "type": "module",
+  "description": "GeoJSON Studio \u2014 vector map exporter (Alight Motion, SVG, KML, PNG)",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run check:graph && npm run check:tdz && npm run test",
+    "check:graph": "node scripts/check-module-graph.mjs",
+    "check:tdz": "node scripts/check-tdz.mjs",
+    "migrate": "npm run migrate:extract && npm run migrate:split && npm run migrate:jsx && npm run migrate:icons && npm run migrate:actions",
+    "migrate:extract": "node scripts/migrate/extract.mjs",
+    "migrate:split": "node scripts/migrate/split-engine.mjs",
+    "migrate:jsx": "node scripts/migrate/generate-jsx.mjs",
+    "migrate:icons": "node scripts/migrate/generate-icons.mjs",
+    "migrate:actions": "node scripts/migrate/generate-actions.mjs"
+  },
+  "dependencies": {
+    "@geoman-io/leaflet-geoman-free": "2.17.0",
+    "@maplibre/maplibre-gl-leaflet": "0.0.22",
+    "@turf/turf": "6.5.0",
+    "leaflet": "1.9.4",
+    "lucide-react": "^0.462.0",
+    "maplibre-gl": "4.7.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "topojson-client": "^3.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8",
+    "@babel/parser": "^7.29.7",
+    "@babel/traverse": "^7.29.0",
+    "@babel/types": "^7.29.0",
+    "@babel/generator": "^7.29.7"
+  }
+}
