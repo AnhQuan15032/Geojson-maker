@@ -21,6 +21,7 @@ import {
   ChevronRight,
   ChevronUp,
   CircleHelp,
+  Cloud,
   CloudUpload,
   Code2,
   HardDrive,
@@ -66,6 +67,7 @@ import {
   MapPinned,
   Maximize,
   Maximize2,
+  Menu,
   Microscope,
   Minimize2,
   Minus,
@@ -116,6 +118,8 @@ import {
 } from 'lucide-react';
 
 export const ICONS = {
+  "cloud": Cloud,
+  "menu": Menu,
   "activity": Activity,
   "arrow-up-narrow-wide": ArrowUpNarrowWide,
   "check": Check,

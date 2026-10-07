@@ -1,9 +1,9 @@
 import { json, bad, getCookie } from './utils.js';
-import { getSessionUser, handleGoogleStart, handleDiscordStart, handleGoogleCallback, handleDiscordCallback, handleLogout } from './auth.js';
+import { getSessionUser, handleDiscordStart, handleDiscordCallback, handleLogout } from './auth.js';
 import { handleListMaps, handleDiscover, handleGetMap, handleCreateMap, handleDeleteMap, handleUsage } from './storage.js';
 
 const CHANGELOG = [
-  { version: '1.2.0', date: '2026-10-07', title: 'Cloud + Auth + Discover', changes: ['Cloudflare KV storage 1 MB quota','Google & Discord OAuth with avatars','Upload GeoJSON + publish current map','Discover maps page','Storage meter','Changelog drawer','Alight Motion export verified fix'] },
+  { version: '1.2.0', date: '2026-10-07', title: 'Cloud + Auth + Discover', changes: ['Cloudflare KV storage 1 MB quota','Discord OAuth with avatars (cloud opt-in, disabled by default)','Upload GeoJSON + publish current map','Discover maps page','Storage meter','Changelog drawer','Alight Motion export verified fix'] },
   { version: '1.1.1', date: '2026-10-05', title: 'Deploy fixes', changes: ['prepare builds dist if missing','wrangler name geojson-maker'] },
   { version: '1.1.0', date: '2026-10-05', title: 'Vite + React migration', changes: ['Split 9,415-line HTML into 63 modules','Tailwind, lucide-react','Parity tests 37'] },
   { version: '1.0.0', date: '2026-09-30', title: 'Initial', changes: ['Draw, split, merge, coast tiles','Exporters Alight/SVG/KML/PNG'] },
@@ -36,9 +36,7 @@ export default {
           const { _token, ...safe } = user;
           return json({ user: safe });
         }
-        if (path === '/api/auth/google' && req.method === 'GET') return handleGoogleStart(req, env);
         if (path === '/api/auth/discord' && req.method === 'GET') return handleDiscordStart(req, env);
-        if (path === '/api/auth/callback/google' && req.method === 'GET') return handleGoogleCallback(req, env);
         if (path === '/api/auth/callback/discord' && req.method === 'GET') return handleDiscordCallback(req, env);
         if (path === '/api/auth/logout' && (req.method === 'POST' || req.method === 'GET')) return handleLogout(req, env);
 

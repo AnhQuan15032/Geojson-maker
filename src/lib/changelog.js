@@ -4,8 +4,8 @@ export const CHANGELOG = [
     date: '2026-10-07',
     title: 'Cloud + Auth + Discover',
     changes: [
-      'Cloudflare KV storage — 1 MB per-user quota with live meter',
-      'Google & Discord OAuth with profile pictures (avatar via cdn.discordapp.com / Google picture)',
+      'Cloudflare KV storage — 1 MB per-user quota with live meter (opt-in, disabled by default)',
+      'Discord OAuth with profile pictures (avatar via cdn.discordapp.com)',
       'Upload GeoJSON (.geojson/.json) or publish current canvas from Upload modal',
       'Discover maps page — public maps, newest first, tap Load to import',
       'Changelog drawer + API (/api/changelog)',

@@ -28,44 +28,46 @@ npx wrangler dev --local --port 8787 & npm run dev  # vite proxies /api → 127.
 | Feature | What it does | Where |
 |---|---|---|
 | **Changelog** | `CHANGELOG.md` rendered in-app + `GET /api/changelog` | Header `scroll-text` → drawer |
-| **Auth — Google & Discord** | OAuth 2.0 via Worker, avatar saved (`picture` / `cdn.discordapp.com/avatars/...`), session `__Host-session` (30d, httpOnly) | Header `Sign In` → modal |
+| **Auth — Discord only** | OAuth 2.0 via Worker, avatar via `cdn.discordapp.com/avatars/...`, session `__Host-session` (30d, httpOnly) | Header Discord button → modal |
+| **Welcome screen** | First visit shows Discord onboarding (skippable), re-open via Settings | `WelcomeModal` + `localStorage.welcomeCompleted` |
 | **Upload GeoJSON** | Drop `.geojson/.json` or **Publish current** canvas (preview from `canvas.toDataURL`) | `Upload` button + Discover drawer — **no sign-in required locally** |
 | **Discover maps** | Public maps newest-first, tap **Load** to import via `L.geoJSON` (now with 2 working demos offline) | `Community` / `Compass` drawer — tabs **Discover / My Maps** |
-| **Cloud storage** | Cloudflare KV (`USERS`, `SESSIONS`, `MAPS`), **1 MB per user** quota, meter `used / 1.00 MB`, `402 QUOTA_EXCEEDED` if full | Header meter + upload modal + `GET /api/storage/usage` |
+| **Cloud storage** | Cloudflare KV (`USERS`, `SESSIONS`, `MAPS`), **1 MB per user** quota, **disabled by default**, opt-in in Settings → Cloud Sync | Header meter + upload modal + `GET /api/storage/usage` |
 
-> **Fixed 2026-10-07:** `Load` now works offline — demo maps embed real GeoJSON (Vietnam coast, Alps), `S.map`/`S.drawnItems` guards, `publishMap` always falls back to `localStorage` when Worker is absent. `Publish current` / `Upload .geojson` auto-create a `Local User` if not signed in, so the app is zero-config.
+> **2026-10-07:** `Load` works offline (demo maps embed real GeoJSON), `publishMap` falls back to `localStorage` when cloud off, `Publish current` auto-creates `Local User`. **Cloud is now opt-in** (Settings toggle, default OFF). **Discord-only** auth, **welcome screen** on first join. Mobile GUI upgraded (cleaner header, FAB dock, overflow menu).
 
-### Cloudflare setup — *optional* (only for cross-device sync)
+### Cloudflare setup — *optional* (only for Discord + cross-device sync)
 
-Skip this if you just want local Discover/Publish (above). Add it when you want Google/Discord sign-in and maps to persist on `geojson-maker.buianhquan452.workers.dev`.
+> Cloud Sync is **disabled by default** in Settings. Enable it there first — it gates all `/api` calls (`src/lib/cloud.js` checks `localStorage.geojson_settings.cloudEnabled` before `fetch`). Without it, everything is `localStorage` only.
 
 ```bash
-# 1. create KV namespaces (once) — needs `npx wrangler login` first
+# 1. (optional) create KV namespaces — only if you enabled Cloud Sync and want persistence
+#    needs `npx wrangler login` first
 wrangler kv namespace create USERS
 wrangler kv namespace create USERS --preview
 wrangler kv namespace create SESSIONS
 wrangler kv namespace create SESSIONS --preview
 wrangler kv namespace create MAPS
 wrangler kv namespace create MAPS --preview
-# paste the 6 returned ids into wrangler.json kv_namespaces {id, preview_id}
-# 2. set OAuth secrets (dashboard → Workers → Settings → Variables or `wrangler secret put`)
-wrangler secret put GOOGLE_CLIENT_ID
-wrangler secret put GOOGLE_CLIENT_SECRET
+# paste the 6 ids into wrangler.json kv_namespaces {id, preview_id}
+# 2. Discord OAuth — create app at https://discord.com/developers/applications → OAuth2
 wrangler secret put DISCORD_CLIENT_ID
 wrangler secret put DISCORD_CLIENT_SECRET
 # optional: BASE_URL (defaults to request host)
 wrangler secret put BASE_URL  # https://geojson-maker.buianhquan452.workers.dev
-# Google redirect: https://geojson-maker.buianhquan452.workers.dev/api/auth/callback/google
-# Discord redirect: https://geojson-maker.buianhquan452.workers.dev/api/auth/callback/discord
+# Discord redirect (add in Discord portal → OAuth2 → Redirects):
+# https://geojson-maker.buianhquan452.workers.dev/api/auth/callback/discord
 ```
 
-If secrets are missing, `GET /api/auth/google|discord` → demo login (`local_demo_*`, avatar `cdn.discordapp.com/embed/avatars/0.png` / `lh3.googleusercontent.com`) so the UI still works.
+If secrets are missing, `GET /api/auth/discord` → demo login (`local_demo_*`, avatar `cdn.discordapp.com/embed/avatars/0.png`) so the UI still works.
 
-Quota server-side: `bytes = JSON.stringify(geojson).length + (preview||'').length`; `usage + bytes > 1_048_576 → 402 {error:"QUOTA_EXCEEDED"}`. Client mirrors it via `getUsage()`.
+Quota: `bytes = JSON.stringify(geojson).length + (preview||'').length`; `usage + bytes > 1_048_576 → 402 {error:"QUOTA_EXCEEDED"}`. Client mirrors it via `getUsage()`; when cloud off, quota is `localStorage` sum.
 
-### How offline fallback works
+### How offline / opt-in works
 
-`src/lib/cloud.js` tries `fetch('/api/...')` first; on any `Failed to fetch` / `404` / `5xx` it uses `localStorage` (`cloud_maps` array, `auth_user`). `listDiscover` merges local public maps + 2 embedded demos, so **Load always works** even with no Worker. Sign-in is optional locally — publish creates `Local User` automatically.
+- **First visit:** `WelcomeModal` shows Discord prompt (skippable, sets `welcomeCompleted`). Re-open anytime: Settings → Show welcome again.
+- **Cloud off (default):** `src/lib/settings.js` `cloudEnabled=false` → `cloud.js` never hits `/api`, all maps in `localStorage` (`cloud_maps`), Discover = local public + 2 demos, **Load always works**.
+- **Cloud on:** enable in Settings → toggle on → `cloud.js` will `fetch('/api/...')` (KV + `__Host-session`), still falls back to local on network error. Sign in with Discord to sync.
 
 
 

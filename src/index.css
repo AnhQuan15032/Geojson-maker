@@ -372,11 +372,20 @@ html, body {
         background: linear-gradient(145deg, #10b981, #0d9488);
         border: 3px solid rgb(15 23 42);
         box-shadow: 0 14px 28px rgba(5, 150, 105, 0.42);
+        transform: translateY(-2px);
+        transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
       }
+      .mobile-draw-action:active { transform: translateY(-2px) scale(0.94); }
       .mobile-draw-action.is-active {
         background: linear-gradient(145deg, #34d399, #14b8a6);
+        box-shadow: 0 16px 32px rgba(16, 185, 129, 0.5);
       }
       .mobile-draw-action::after { display: none; }
+
+      /* upgraded: topbar overflow menu */
+      #mobile-app-header > div + div + div {
+        pointer-events: auto;
+      }
 
       #sheet-backdrop {
         position: fixed;

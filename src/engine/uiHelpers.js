@@ -320,25 +320,24 @@ export async function openAuthModal() {
     modal.innerHTML = `
       <div class="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden">
         <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 class="text-sm font-bold text-white flex items-center gap-2"><i data-lucide="user" class="w-4 h-4 text-sky-400"></i> Sign in</h3>
+          <h3 class="text-sm font-bold text-white flex items-center gap-2"><i data-lucide="message-circle" class="w-4 h-4 text-[#5865F2]"></i> Sign in with Discord</h3>
           <button class="p-1 text-slate-400 hover:text-white" onclick="document.getElementById('auth-modal').remove()"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
         <div class="p-5 space-y-3">
-          <button id="btn-google-signin" class="w-full py-2.5 rounded-xl bg-white text-slate-900 font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-100">
-            <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" class="w-4 h-4" onerror="this.style.display='none'"/><span class="w-4 h-4 rounded-full bg-gradient-to-br from-blue-500 via-red-500 to-yellow-400" style="display:none"></span> Continue with Google
+          <button id="btn-discord-signin" class="w-full py-3 rounded-xl bg-[#5865F2] text-white font-black text-sm flex items-center justify-center gap-2 hover:bg-[#4752c4] shadow-lg shadow-violet-900/20">
+            <i data-lucide="message-circle" class="w-5 h-5"></i> Continue with Discord
           </button>
-          <button id="btn-discord-signin" class="w-full py-2.5 rounded-xl bg-[#5865F2] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#4752c4]">
-            <i data-lucide="message-circle" class="w-4 h-4"></i> Continue with Discord
-          </button>
-          <p class="text-[10px] text-slate-500 text-center">Secure OAuth via Cloudflare Worker — avatar is saved</p>
-          <p class="text-[10px] text-amber-300 text-center">No credentials configured → demo login (still shows avatar)</p>
+          <p class="text-[11px] text-slate-400 text-center leading-relaxed">Secure OAuth — your Discord avatar is saved. <br/><span class="text-slate-500">No Discord? Cloud works locally without signing in.</span></p>
+          <div class="bg-slate-800/80 rounded-xl p-3 border border-slate-700/40">
+            <div class="text-[11px] font-bold text-slate-300 flex items-center gap-1.5"><i data-lucide="hard-drive" class="w-3.5 h-3.5 text-slate-500"></i> Cloud sync is off by default</div>
+            <p class="text-[11px] text-slate-500 mt-1">Enable it in <span class="text-slate-300 font-medium">Settings → Cloud Sync</span> to store maps on Cloudflare (1 MB quota).</p>
+          </div>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.remove(); });
     try { window.lucide && window.lucide.createIcons({ root: modal }); } catch {}
-    modal.querySelector('#btn-google-signin')?.addEventListener('click', ()=>{ location.href='/api/auth/google'; });
     modal.querySelector('#btn-discord-signin')?.addEventListener('click', ()=>{ location.href='/api/auth/discord'; });
   }
 }

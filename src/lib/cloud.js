@@ -1,5 +1,6 @@
 // Cloud storage helper — 1 MB quota via Worker KV, with full offline fallback
-// Works zero-config: if Worker not available, everything is stored in localStorage.
+// Opt-in: disabled by default, enable in Settings → Cloud Sync. When disabled,
+// all ops stay in localStorage and never hit /api.
 const API = '';
 export const QUOTA = 1 * 1024 * 1024;
 
@@ -9,6 +10,13 @@ export function formatBytes(n) {
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 export function quotaPercent(used) { return Math.min(100, Math.round(used / QUOTA * 100)); }
+
+function isCloudEnabled() {
+  try {
+    const s = JSON.parse(localStorage.getItem('geojson_settings') || '{}');
+    return !!s.cloudEnabled;
+  } catch { return false; }
+}
 
 // ---- demo GeoJSON so Load works without any Cloudflare setup ----
 const DEMO_VN_GJ = {
@@ -48,6 +56,12 @@ function lsUsage() {
 }
 
 async function req(path, opts={}) {
+  if (!isCloudEnabled()) {
+    const err = new Error('cloud disabled');
+    err.status = 0;
+    err.data = { error: 'CLOUD_DISABLED' };
+    throw err;
+  }
   const r = await fetch(`${API}${path}`, { credentials: 'include', ...opts, headers: { 'content-type': 'application/json', ...(opts.headers||{}) } });
   const j = await r.json().catch(()=>({}));
   if (!r.ok) {
@@ -65,7 +79,7 @@ export async function getUsage() {
     if (typeof j.usage === 'number') return j;
   } catch {}
   const used = lsUsage();
-  return { usage: used, quota: QUOTA };
+  return { usage: used, quota: QUOTA, cloudEnabled: isCloudEnabled() };
 }
 export async function listMyMaps() {
   try {
@@ -103,12 +117,22 @@ export async function publishMap({ title, geojson, isPublic=false, preview=null 
   const { usage, quota } = await getUsage();
   if (usage + bytes > (quota||QUOTA)) throw Object.assign(new Error('QUOTA_EXCEEDED'), { data:{ error:'QUOTA_EXCEEDED' }, status:402 });
   const body = { title, geojson, isPublic, preview };
+  // if cloud disabled, skip network entirely and store locally
+  if (!isCloudEnabled()) {
+    const maps = lsGet();
+    const author = (()=>{ try{ return JSON.parse(localStorage.getItem('auth_user')||'null') || {name:'local', avatar:''}; }catch{ return {name:'local',avatar:''}; }})();
+    const doc = { id:`local_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, title, geojson, isPublic, preview, bytes, createdAt: Date.now(), author:{ name: author.name||'local', avatar: author.avatar||'' } };
+    maps.unshift(doc);
+    lsSet(maps);
+    return doc;
+  }
   try {
     const j = await req('/api/maps', { method:'POST', body: JSON.stringify(body) });
     if (j.map) return j.map;
     return j;
   } catch (e) {
     if (e.status===402 || e.data?.error==='QUOTA_EXCEEDED') throw e;
+    // network/5xx or cloud disabled → local fallback (already handled above for disabled, this is for network failure)
     const maps = lsGet();
     const newUsed = maps.reduce((a,m)=>a+(m.bytes||0),0) + bytes;
     if (newUsed > QUOTA) throw Object.assign(new Error('QUOTA_EXCEEDED'), { status:402, data:{error:'QUOTA_EXCEEDED'} });
@@ -120,7 +144,9 @@ export async function publishMap({ title, geojson, isPublic=false, preview=null 
   }
 }
 export async function deleteMap(id) {
-  try { await req(`/api/maps/${id}`, { method:'DELETE' }); } catch {}
+  if (isCloudEnabled()) {
+    try { await req(`/api/maps/${id}`, { method:'DELETE' }); } catch {}
+  }
   const maps = lsGet();
   const pruned = maps.filter(m=>m.id!==id);
   if (pruned.length!==maps.length) lsSet(pruned);

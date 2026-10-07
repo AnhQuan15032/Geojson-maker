@@ -1,7 +1,7 @@
-// Frontend auth helper — talks to Worker /api/auth/*
-// Falls back to localStorage mock when Worker not available (vite dev without wrangler)
+// Frontend auth helper — Discord-only, Cloudflare Worker /api/auth/*
+// Falls back to localStorage mock when Worker not available
 
-const API = ''; // same origin — Vite proxies /api to worker in dev via vite.config, in prod via Workers assets
+const API = '';
 let _user = null;
 let _listeners = new Set();
 
@@ -15,13 +15,11 @@ export async function fetchMe() {
     if (!r.ok) throw new Error('no session');
     const j = await r.json();
     _user = j.user || null;
-    // also sync to localStorage for offline fallback display
     if (_user) localStorage.setItem('auth_user', JSON.stringify(_user));
     else localStorage.removeItem('auth_user');
     notify();
     return _user;
   } catch (e) {
-    // fallback to localStorage demo user
     try {
       const saved = JSON.parse(localStorage.getItem('auth_user') || localStorage.getItem('demo_auth_user') || 'null');
       if (saved) { _user = saved; notify(); return _user; }
@@ -32,10 +30,14 @@ export async function fetchMe() {
   }
 }
 
-export function loginWith(provider) {
-  // provider: 'google' | 'discord'
-  const url = `${API}/api/auth/${provider}?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
+export function loginWithDiscord() {
+  const url = `${API}/api/auth/discord?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
   location.href = url;
+}
+// backwards compat
+export function loginWith(provider) {
+  // only discord is supported now — ignore google
+  return loginWithDiscord();
 }
 
 export async function logout() {
@@ -49,10 +51,8 @@ export async function logout() {
   location.reload();
 }
 
-// auto-fetch on load
 if (typeof window !== 'undefined') {
   fetchMe();
-  // also restore legacy demo user immediately for instant header
   try {
     const legacy = JSON.parse(localStorage.getItem('demo_auth_user') || 'null');
     if (legacy && !_user) { _user = legacy; }

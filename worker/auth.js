@@ -31,26 +31,6 @@ function baseUrl(req, env) {
   return `${u.protocol}//${u.host}`;
 }
 
-export async function handleGoogleStart(req, env) {
-  const clientId = env.GOOGLE_CLIENT_ID;
-  if (!clientId || !env.GOOGLE_CLIENT_SECRET) {
-    // mock mode: create demo user directly
-    return handleMockLogin(req, env, 'google');
-  }
-  const state = uuid();
-  await kvPut(env, 'SESSIONS', `oauth:${state}`, { provider: 'google', createdAt: Date.now() }, { expirationTtl: 600 });
-  const redirect = `${baseUrl(req, env)}/api/auth/callback/google`;
-  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  url.searchParams.set('client_id', clientId);
-  url.searchParams.set('redirect_uri', redirect);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('scope', 'openid profile email');
-  url.searchParams.set('state', state);
-  url.searchParams.set('access_type', 'offline');
-  url.searchParams.set('prompt', 'consent');
-  return Response.redirect(url.toString(), 302);
-}
-
 export async function handleDiscordStart(req, env) {
   const clientId = env.DISCORD_CLIENT_ID;
   if (!clientId || !env.DISCORD_CLIENT_SECRET) {
@@ -72,62 +52,17 @@ async function handleMockLogin(req, env, provider) {
   const mockUser = {
     id: `${provider}_demo_${Math.floor(Math.random()*1e6)}`,
     provider,
-    name: provider === 'discord' ? 'Discord Demo' : 'Demo User',
+    name: 'Discord Demo',
     email: `demo@${provider}.local`,
-    avatar: provider === 'discord'
-      ? 'https://cdn.discordapp.com/embed/avatars/0.png'
-      : 'https://lh3.googleusercontent.com/a/default-user',
+    avatar: 'https://cdn.discordapp.com/embed/avatars/0.png',
     createdAt: Date.now(),
   };
   const token = await createSession(env, mockUser);
   const headers = new Headers();
   headers.set('Set-Cookie', sessionCookie(token));
-  // redirect back to app with success flag
   const u = new URL(req.url);
   const returnTo = u.searchParams.get('returnTo') || '/';
   headers.set('Location', returnTo);
-  return new Response(null, { status: 302, headers });
-}
-
-export async function handleGoogleCallback(req, env) {
-  const url = new URL(req.url);
-  const code = url.searchParams.get('code');
-  const state = url.searchParams.get('state');
-  if (!code || !state) return bad('missing code/state', 400);
-  const stored = await kvGet(env, 'SESSIONS', `oauth:${state}`);
-  if (!stored || stored.provider !== 'google') return bad('invalid state', 400);
-  await kvDel(env, 'SESSIONS', `oauth:${state}`);
-  const clientId = env.GOOGLE_CLIENT_ID;
-  const clientSecret = env.GOOGLE_CLIENT_SECRET;
-  if (!clientId) return bad('not configured', 500);
-  const redirect = `${baseUrl(req, env)}/api/auth/callback/google`;
-  // exchange
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirect, grant_type: 'authorization_code',
-    }),
-  });
-  if (!tokenRes.ok) return bad('token exchange failed ' + await tokenRes.text(), 500);
-  const tok = await tokenRes.json();
-  const infoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-    headers: { Authorization: `Bearer ${tok.access_token}` },
-  });
-  if (!infoRes.ok) return bad('userinfo failed', 500);
-  const info = await infoRes.json();
-  const user = {
-    id: `google_${info.id}`,
-    provider: 'google',
-    name: info.name || info.email || 'Google User',
-    email: info.email || '',
-    avatar: info.picture || '',
-    createdAt: Date.now(),
-  };
-  const token = await createSession(env, user);
-  const headers = new Headers();
-  headers.set('Set-Cookie', sessionCookie(token));
-  headers.set('Location', '/');
   return new Response(null, { status: 302, headers });
 }
 

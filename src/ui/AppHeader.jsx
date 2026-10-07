@@ -119,11 +119,11 @@ export function AppHeader() {
             Upload
           </span>
         </button>
-        {/* User Auth (Google & Discord) */}
-        <button onClick={() => { openAuthModal() }} id="btn-auth-header" title="Sign In with Google or Discord" className="bg-slate-900/90 backdrop-blur-md pl-1.5 pr-3 py-1 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 hover:text-white flex items-center gap-1.5 active:scale-95 transition">
-          <span className="w-6 h-6 rounded-full bg-slate-700 grid place-items-center"><Icon name="user" className="w-3.5 h-3.5 text-sky-400" /></span>
+        {/* User Auth (Discord only) */}
+        <button onClick={() => { openAuthModal() }} id="btn-auth-header" title="Sign in with Discord" className="bg-slate-900/90 backdrop-blur-md pl-1.5 pr-3 py-1 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 hover:text-white flex items-center gap-1.5 active:scale-95 transition">
+          <span className="w-6 h-6 rounded-full bg-[#5865F2] grid place-items-center"><Icon name="message-circle" className="w-3.5 h-3.5 text-white" /></span>
           <span id="text-auth-user">
-            Sign In
+            Discord
           </span>
         </button>
         {/* Changelog */}
