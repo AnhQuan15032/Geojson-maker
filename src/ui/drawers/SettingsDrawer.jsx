@@ -1,27 +1,7 @@
-import { useEffect, useState } from 'react';
 import { Icon } from '../../lib/icons';
 import actions from '../../engine/actions';
-import { getSettings, setCloudEnabled, subscribeSettings } from '../../lib/settings';
-import { showToast } from '../../engine/uiHelpers';
 
 export function SettingsDrawer() {
-  const [cloudEnabled, setCloudEnabledState] = useState(getSettings().cloudEnabled);
-
-  useEffect(() => {
-    const unsub = subscribeSettings((s) => setCloudEnabledState(!!s.cloudEnabled));
-    return unsub;
-  }, []);
-
-  const toggleCloud = (checked) => {
-    setCloudEnabled(checked);
-    showToast(checked ? 'Cloud sync enabled — maps will sync via Cloudflare' : 'Cloud sync disabled — maps stay local');
-    // trigger a storage refresh in case drawer is open
-    try {
-      const el = document.getElementById('creations-drawer');
-      if (el) el.dispatchEvent(new CustomEvent('refresh'));
-    } catch {}
-  };
-
   return (
     <div id="settings-drawer" className="sheet-drawer fixed bottom-0 left-0 right-0 z-40 bg-slate-900/98 backdrop-blur-xl border-t border-slate-700/80 rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto">
       <div className="flex justify-between items-center mb-4">
@@ -34,36 +14,23 @@ export function SettingsDrawer() {
         </button>
       </div>
 
-      {/* 0. CLOUD SYNC — now first, opt-in disabled by default */}
-      <div className={`p-3.5 rounded-2xl border space-y-2.5 mb-4 ${cloudEnabled ? 'bg-violet-950/30 border-violet-700/40' : 'bg-slate-800/80 border-slate-700/60'}`}>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-            <Icon name="cloud" className={`w-4 h-4 ${cloudEnabled ? 'text-violet-400' : 'text-slate-500'}`} />
-            Cloud Sync
-            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black tracking-wide ${cloudEnabled ? 'bg-violet-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
-              {cloudEnabled ? 'ON' : 'OFF'}
-            </span>
-            {!cloudEnabled && <span className="text-[10px] font-medium text-slate-500">• disabled by default</span>}
-          </span>
-          <label className="relative inline-flex items-center cursor-pointer shrink-0">
-            <input type="checkbox" checked={cloudEnabled} onChange={(e) => toggleCloud(e.currentTarget.checked)} className="sr-only peer" />
-            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-600"></div>
-          </label>
+      {/* 0. SHARING — no cloud needed */}
+      <div className="p-3.5 rounded-2xl border bg-sky-950/20 border-sky-700/30 space-y-2.5 mb-4">
+        <div className="flex items-center gap-2">
+          <span className="w-7 h-7 grid place-items-center rounded-xl bg-sky-500/15 text-sky-400 border border-sky-500/20"><Icon name="share" className="w-4 h-4" /></span>
+          <span className="text-xs font-bold text-sky-200">Sharing</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-sky-500 text-white font-black">LINK</span>
         </div>
-        <p className="text-[10px] text-slate-400 leading-relaxed">
-          {cloudEnabled
-            ? <>Syncs your maps to <b className="text-violet-300">Cloudflare KV</b> (1 MB quota). Discover, uploads, and <span className="text-slate-200">Discord</span> avatar require it. Disable to keep everything in <b className="text-slate-300">localStorage</b> only.</>
-            : <>Cloud is <b className="text-slate-200">off</b>. Maps stay in your browser (still have <b className="text-emerald-300">Discover → Load</b> demos). Turn on to sync across devices via Cloudflare — needs <b className="text-[#5865F2]">Discord sign-in</b>.</>}
+        <p className="text-[11px] text-slate-400 leading-relaxed">
+          Publish creates a <b className="text-sky-300">shareable link</b> (`#share=…` in URL). Anyone with the link can <b className="text-slate-200">Load</b> it — no cloud, no sign-in required. Your maps stay in this browser (`localStorage`, 1 MB quota).
         </p>
         <div className="flex gap-2">
           <button onClick={() => { actions.closeDrawers(); setTimeout(()=> { try{ window.dispatchEvent(new CustomEvent('show-welcome', { detail:{force:true}})); }catch{} }, 300); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium">
             Show welcome again
           </button>
-          {cloudEnabled && (
-            <button onClick={() => { actions.toggleDrawer('creations-drawer'); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-violet-600 hover:bg-violet-500 text-white font-bold">
-              Open Discover
-            </button>
-          )}
+          <button onClick={() => { actions.toggleDrawer('creations-drawer'); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-sky-600 hover:bg-sky-500 text-white font-bold">
+            Open Discover
+          </button>
         </div>
       </div>
 
@@ -75,18 +42,13 @@ export function SettingsDrawer() {
             Latitude-Longitude Grid Overlay
           </span>
           <label className="flex items-center gap-2 cursor-pointer shrink-0">
-            <span id="status-latlng-grid-settings" className="text-[10px] font-bold text-slate-400">
-              OFF
-            </span>
+            <span id="status-latlng-grid-settings" className="text-[10px] font-bold text-slate-400">OFF</span>
             <input type="checkbox" id="toggle-latlng-grid-settings" onChange={(e) => { actions.toggleLatLngGrid(e.currentTarget.checked) }} className="w-4 h-4 accent-sky-500 rounded" />
           </label>
         </div>
         <p className="text-[10px] text-slate-400 leading-relaxed">
-          Overlays an adaptive geographic graticule with coordinates (
-          <b className="text-sky-300">°N/°S, °E/°W</b>
-          ) directly on the map for precise spatial alignment. Press
-          <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-sky-300 font-mono text-[9px]">G</kbd>
-          anytime to toggle.
+          Overlays an adaptive geographic graticule with coordinates (<b className="text-sky-300">°N/°S, °E/°W</b>) directly on the map for precise spatial alignment. Press
+          <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-sky-300 font-mono text-[9px]">G</kbd> anytime to toggle.
         </p>
       </div>
 
@@ -118,9 +80,7 @@ export function SettingsDrawer() {
           </label>
         </div>
         <p className="text-[10px] text-slate-400 leading-relaxed">
-          Displays coordinate badges (
-          <b className="text-emerald-300">P1 • 34.5°N, 36.1°E</b>
-          ) and distance increments below each polygon vertex while drawing.
+          Displays coordinate badges (<b className="text-emerald-300">P1 • 34.5°N, 36.1°E</b>) and distance increments below each polygon vertex while drawing.
         </p>
       </div>
 

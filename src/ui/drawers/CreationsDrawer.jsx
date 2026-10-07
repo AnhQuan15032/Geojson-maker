@@ -2,8 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Icon } from '../../lib/icons';
 import actions from '../../engine/actions';
 import { getUser, subscribeAuth } from '../../lib/auth';
-import { isCloudEnabled, subscribeSettings } from '../../lib/settings';
-import { listDiscover, listMyMaps, getMap, publishMap, deleteMap, getUsage, formatBytes, quotaPercent } from '../../lib/cloud';
+import { listDiscover, listMyMaps, getMap, publishMap, deleteMap, getUsage, formatBytes, quotaPercent, createShareUrl, consumeShareHash } from '../../lib/share';
 import { liveGeoJSONString } from '../../engine/quickTools';
 import { S } from '../../engine/state';
 import L from 'leaflet';
@@ -19,15 +18,13 @@ export function CreationsDrawer() {
   const [myMaps, setMyMaps] = useState([]);
   const [usage, setUsage] = useState({ usage: 0, quota: 1048576 });
   const [user, setUser] = useState(getUser());
-  const [cloudEnabled, setCloudEnabledState] = useState(isCloudEnabled());
   const [loading, setLoading] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
     const unsub = subscribeAuth(setUser);
     setUser(getUser());
-    const unsub2 = subscribeSettings((s) => setCloudEnabledState(!!s.cloudEnabled));
-    return () => { unsub(); unsub2(); };
+    return () => { unsub(); };
   }, []);
 
   const refresh = async () => {
@@ -163,7 +160,10 @@ export function CreationsDrawer() {
         if (canvas) preview = canvas.toDataURL('image/png');
       } catch {}
       const created = await publishMap({ title: finalTitle, geojson: gj, isPublic: true, preview });
-      showToast(`Published “${created.title||finalTitle}”`);
+      const shareUrl = createShareUrl({ title: finalTitle, geojson: gj, preview });
+      try { await navigator.clipboard.writeText(shareUrl); showToast(`Published “${created.title||finalTitle}” — link copied`); } catch { showToast(`Published “${created.title||finalTitle}” — share: ${shareUrl.slice(0,60)}…`); }
+      // also show share url in prompt for easy copy on mobile
+      try { if (!navigator.clipboard || !window.isSecureContext) prompt('Share this link:', shareUrl); } catch {}
       refresh();
       setTab('my');
     } catch (e) {
@@ -185,8 +185,9 @@ export function CreationsDrawer() {
       const title = file.name.replace(/\.geojson$/i,'').replace(/\.json$/i,'') || 'Uploaded';
       let preview = null;
       try { const canvas = document.querySelector('#map canvas'); if (canvas) preview = canvas.toDataURL('image/png'); } catch {}
-      const created = await publishMap({ title, geojson: gj, isPublic: false, preview });
-      showToast(`Uploaded “${created.title||title}”`);
+      const created = await publishMap({ title, geojson: gj, isPublic: true, preview });
+      const shareUrl = createShareUrl({ title, geojson: gj, preview });
+      try { await navigator.clipboard.writeText(shareUrl); showToast(`Uploaded “${created.title||title}” — link copied`);} catch { showToast(`Uploaded “${created.title||title}”`); }
       refresh();
       setTab('my');
     } catch (err) {
@@ -194,6 +195,28 @@ export function CreationsDrawer() {
       else showToast('Upload failed: '+(err.message||'invalid GeoJSON'));
     } finally { e.target.value=''; }
   };
+
+  const handleShare = async (m) => {
+    try {
+      let gj = m.geojson;
+      if (!gj) { const full = await getMap(m.id); gj = (full.geojson||full); }
+      const title = m.title||'Shared map';
+      const preview = m.preview||null;
+      const url = createShareUrl({ title, geojson: gj, preview });
+      await navigator.clipboard.writeText(url);
+      showToast('Link copied — share it');
+      try { if (navigator.share) await navigator.share({ title, url }); } catch {}
+    } catch { showToast('Could not share'); }
+  };
+
+  // handle #share=... on load — show banner and refresh
+  useEffect(() => {
+    const shared = consumeShareHash();
+    if (shared) {
+      showToast(`Shared map “${shared.title}” — open Discover to Load`);
+      refresh();
+    }
+  }, []);
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this map?')) return;
@@ -219,33 +242,15 @@ export function CreationsDrawer() {
         </button>
       </div>
 
-      {!cloudEnabled && (
-        <div className="mb-3 bg-amber-950/30 border border-amber-700/40 rounded-2xl p-3 flex items-start gap-2.5">
-          <span className="w-7 h-7 grid place-items-center rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0"><Icon name="cloud" className="w-4 h-4" /></span>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-bold text-amber-200">Cloud sync is off</div>
-            <p className="text-[11px] text-amber-200/70 leading-relaxed">Your maps are saved locally. Turn on Cloud Sync in Settings to publish to Cloudflare and use Discord sign-in across devices.</p>
-            <button onClick={()=>{ actions.closeDrawers(); setTimeout(()=> actions.toggleDrawer('settings-drawer'), 220); }} className="mt-2 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-500 text-slate-900 hover:bg-amber-400">Open Settings → Cloud Sync</button>
-          </div>
-        </div>
-      )}
-
-      <div className={`mb-3 rounded-2xl border p-3 ${cloudEnabled ? 'bg-slate-800/80 border-slate-700/40' : 'bg-slate-800/40 border-slate-700/30 opacity-75'}`}>
+      <div className="mb-3 bg-slate-800/80 rounded-2xl border border-slate-700/40 p-3">
         <div className="flex justify-between items-center mb-1.5">
-          <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-            <Icon name="hard-drive" className={`w-3.5 h-3.5 ${cloudEnabled ? 'text-emerald-400' : 'text-slate-500'}`}/> {cloudEnabled ? 'Cloud storage' : 'Local storage'}
-            {!cloudEnabled && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-400 font-black">LOCAL ONLY</span>}
-          </span>
+          <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5"><Icon name="hard-drive" className="w-3.5 h-3.5 text-emerald-400"/> Local storage</span>
           <span className={`text-[11px] font-mono ${isOver?'text-red-400':'text-slate-400'}`}>{formatBytes(usage.usage)} / {formatBytes(usage.quota)}</span>
         </div>
         <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
           <div className={`h-full ${pct>90?'bg-red-500': pct>70?'bg-amber-500':'bg-emerald-500'} transition-all`} style={{width:`${pct}%`}} />
         </div>
-        {!cloudEnabled ? (
-          <p className="text-[11px] text-slate-500 mt-1.5">Cloud is disabled — maps stay in this browser. Enable in Settings to sync.</p>
-        ) : !user ? (
-          <p className="text-[11px] text-amber-300 mt-1.5">Sign in with Discord to sync across devices.</p>
-        ) : null}
+        <p className="text-[11px] text-slate-500 mt-1.5">Share via link — anyone with the link can Load it. No cloud needed.</p>
       </div>
 
       <div className="flex bg-slate-800 rounded-xl p-1 mb-3">
@@ -278,7 +283,7 @@ export function CreationsDrawer() {
                 <div className="text-[11px] text-slate-400 flex items-center gap-1.5"> {m.author?.avatar ? <img src={m.author.avatar} className="w-4 h-4 rounded-full" alt="avatar"/> : null} by {m.author?.name||'unknown'} · {formatBytes(m.bytes||0)}</div>
                 <div className="flex gap-2 mt-2">
                   <button onClick={()=>handleLoad(m)} className="flex-1 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold text-white">Load</button>
-                  <a href={`/api/maps/${m.id}`} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold text-white grid place-items-center"><Icon name="download" className="w-3.5 h-3.5"/></a>
+                  <button onClick={()=>handleShare(m)} className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white flex items-center gap-1"><Icon name="share" className="w-3.5 h-3.5"/> Share</button>
                 </div>
               </div>
             </div>
@@ -299,7 +304,8 @@ export function CreationsDrawer() {
                 <div className="text-[11px] text-slate-400">{m.createdAt? new Date(m.createdAt).toLocaleDateString():''} · {formatBytes(m.bytes||0)} · {m.isPublic?'Public':'Private'}</div>
                 <div className="flex gap-2 mt-2">
                   <button onClick={()=>handleLoad(m)} className="flex-1 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold text-white">Load</button>
-                  <button onClick={()=>handleDelete(m.id)} className="px-3 py-2 rounded-xl bg-red-900/50 hover:bg-red-800 text-xs font-bold text-red-300"><Icon name="trash-2" className="w-3.5 h-3.5"/></button>
+                  <button onClick={()=>handleShare(m)} className="px-2.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white"><Icon name="share" className="w-3.5 h-3.5"/></button>
+                  <button onClick={()=>handleDelete(m.id)} className="px-2.5 py-2 rounded-xl bg-red-900/50 hover:bg-red-800 text-xs font-bold text-red-300"><Icon name="trash-2" className="w-3.5 h-3.5"/></button>
                 </div>
               </div>
             </div>

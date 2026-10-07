@@ -23,51 +23,42 @@ npm run check     # module-graph check + TDZ check + tests
 npx wrangler dev --local --port 8787 & npm run dev  # vite proxies /api → 127.0.0.1:8787 (see vite.config.js)
 ```
 
-## New in 1.2.0 — Cloud, Auth, Discover, Changelog
+## New in 1.2.1 — Share via link (cloud deleted)
 
 | Feature | What it does | Where |
 |---|---|---|
 | **Changelog** | `CHANGELOG.md` rendered in-app + `GET /api/changelog` | Header `scroll-text` → drawer |
-| **Auth — Discord only** | OAuth 2.0 via Worker, avatar via `cdn.discordapp.com/avatars/...`, session `__Host-session` (30d, httpOnly) | Header Discord button → modal |
+| **Auth — local display name** | Prompt for name on first Publish / Welcome; stored in `localStorage.auth_user`, no Worker needed | Header Discord button → modal |
 | **Welcome screen** | First visit shows Discord onboarding (skippable), re-open via Settings | `WelcomeModal` + `localStorage.welcomeCompleted` |
 | **Upload GeoJSON** | Drop `.geojson/.json` or **Publish current** canvas (preview from `canvas.toDataURL`) | `Upload` button + Discover drawer — **no sign-in required locally** |
 | **Discover maps** | Public maps newest-first, tap **Load** to import via `L.geoJSON` (now with 2 working demos offline) | `Community` / `Compass` drawer — tabs **Discover / My Maps** |
-| **Cloud storage** | Cloudflare KV (`USERS`, `SESSIONS`, `MAPS`), **1 MB per user** quota, **disabled by default**, opt-in in Settings → Cloud Sync | Header meter + upload modal + `GET /api/storage/usage` |
+| **Sharing** | Publish/Upload save to `localStorage` + generate `https://.../#share=...` link (base64). Anyone with link can Load it | Discover drawer → Share button (copies link) |
 
-> **2026-10-07:** `Load` works offline (demo maps embed real GeoJSON), `publishMap` falls back to `localStorage` when cloud off, `Publish current` auto-creates `Local User`. **Cloud is now opt-in** (Settings toggle, default OFF). **Discord-only** auth, **welcome screen** on first join. Mobile GUI upgraded (cleaner header, FAB dock, overflow menu).
+> **2026-10-07 — 1.2.1:** **Cloud deleted** to fix `KV 000... not found [10041]` and `build token deleted` deploys. **Share via link** (`#share=...`) — local `1 MB` quota, `Discover` = demos + local public + shared hash, `Copy link` + `Load` for every map. **Discord is now local display name** (no Worker OAuth). **Mobile GUI** upgraded.
 
-### Cloudflare setup — *optional* (only for Discord + cross-device sync)
+### Cloudflare setup — *deleted* (share via link needs no cloud)
 
-> Cloud Sync is **disabled by default** in Settings. Enable it there first — it gates all `/api` calls (`src/lib/cloud.js` checks `localStorage.geojson_settings.cloudEnabled` before `fetch`). Without it, everything is `localStorage` only.
+> **Cloud is deleted** in 1.2.1 to fix `10041` / `build token deleted`. Sharing is now **local + URL hash** (`src/lib/share.js`): `Publish`/`Upload` → save to `localStorage.cloud_maps` + copy `https://.../#share=...` link. Open that link anywhere → Discover shows it. No `wrangler kv`, no `wrangler secret`, no Worker KV needed.
 
 ```bash
-# 1. (optional) create KV namespaces — only if you enabled Cloud Sync and want persistence
-#    needs `npx wrangler login` first
-wrangler kv namespace create USERS
-wrangler kv namespace create USERS --preview
-wrangler kv namespace create SESSIONS
-wrangler kv namespace create SESSIONS --preview
-wrangler kv namespace create MAPS
-wrangler kv namespace create MAPS --preview
-# paste the 6 ids into wrangler.json kv_namespaces {id, preview_id}
-# 2. Discord OAuth — create app at https://discord.com/developers/applications → OAuth2
-wrangler secret put DISCORD_CLIENT_ID
-wrangler secret put DISCORD_CLIENT_SECRET
-# optional: BASE_URL (defaults to request host)
-wrangler secret put BASE_URL  # https://geojson-maker.buianhquan452.workers.dev
-# Discord redirect (add in Discord portal → OAuth2 → Redirects):
-# https://geojson-maker.buianhquan452.workers.dev/api/auth/callback/discord
+# No KV / secrets needed for sharing. Just build and deploy the static `dist`:
+npm run build          # → dist/
+# Workers (keeps same URL) — wrangler.json has only assets + main (no kv_namespaces)
+npx wrangler deploy    # or: Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git
+# Pages alternative (no Workers token needed):
+# npx wrangler pages deploy dist --project-name=geojson-maker
 ```
 
-If secrets are missing, `GET /api/auth/discord` → demo login (`local_demo_*`, avatar `cdn.discordapp.com/embed/avatars/0.png`) so the UI still works.
+No secrets needed. `WelcomeModal` → `Continue with Discord` now just prompts for a display name and saves to `localStorage.auth_user`; sharing works as that name.
 
-Quota: `bytes = JSON.stringify(geojson).length + (preview||'').length`; `usage + bytes > 1_048_576 → 402 {error:"QUOTA_EXCEEDED"}`. Client mirrors it via `getUsage()`; when cloud off, quota is `localStorage` sum.
+Quota: `bytes = JSON.stringify(geojson).length + (preview||'').length`; `usage + bytes > 1_048_576 → 402 {error:"QUOTA_EXCEEDED"}` is now checked against `localStorage` sum only (1 MB local).
 
-### How offline / opt-in works
+### How sharing works (no cloud)
 
-- **First visit:** `WelcomeModal` shows Discord prompt (skippable, sets `welcomeCompleted`). Re-open anytime: Settings → Show welcome again.
-- **Cloud off (default):** `src/lib/settings.js` `cloudEnabled=false` → `cloud.js` never hits `/api`, all maps in `localStorage` (`cloud_maps`), Discover = local public + 2 demos, **Load always works**.
-- **Cloud on:** enable in Settings → toggle on → `cloud.js` will `fetch('/api/...')` (KV + `__Host-session`), still falls back to local on network error. Sign in with Discord to sync.
+- **First visit:** `WelcomeModal` shows (skippable, sets `welcomeCompleted`). Re-open: Settings → Show welcome again.
+- **Publish current / Upload .geojson:** saves to `localStorage.cloud_maps` (1 MB quota) + generates `https://.../#share=<base64>` and copies to clipboard. Share that URL.
+- **Discover:** shows `2 demos + your local public maps + any #share=...` hash (parsed via `parseShareHash()`). Tap **Load** to add to map, **Share** to copy link again.
+- **My Maps:** shows your local maps with **Share** + **Load** + **Delete**. Opening a shared link shows a toast *Shared map “…” — open Discover to Load* and it appears in Discover.
 
 
 

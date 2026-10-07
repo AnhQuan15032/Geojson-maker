@@ -240,7 +240,7 @@ export function refreshAuthUI(user) {
   const meter = document.getElementById('storage-meter-text');
   if (meter && user) {
     // fetch usage async
-    import('../lib/cloud.js').then(m => m.getUsage().then(u => {
+    import('../lib/share.js').then(m => m.getUsage().then(u => {
       meter.textContent = `${formatBytes(u.usage)} / ${formatBytes(u.quota)}`;
       const bar = document.getElementById('storage-meter-bar');
       if (bar) bar.style.width = `${Math.min(100, Math.round(u.usage / u.quota * 100))}%`;
@@ -249,19 +249,6 @@ export function refreshAuthUI(user) {
 }
 
 async function fetchMeAndRefresh() {
-  try {
-    const r = await fetch('/api/auth/me', { credentials: 'include' });
-    if (r.ok) {
-      const j = await r.json();
-      if (j.user) {
-        _authUser = j.user;
-        try { localStorage.setItem('auth_user', JSON.stringify(j.user)); } catch {}
-        refreshAuthUI(j.user);
-        return j.user;
-      }
-    }
-  } catch {}
-  // fallback to localStorage
   try {
     const saved = JSON.parse(localStorage.getItem('auth_user') || localStorage.getItem('demo_auth_user') || 'null');
     if (saved) { _authUser = saved; refreshAuthUI(saved); return saved; }
@@ -305,14 +292,13 @@ export async function openAuthModal() {
     modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.remove(); });
     try { window.lucide && window.lucide.createIcons({ root: modal }); } catch {}
     // load usage
-    import('../lib/cloud.js').then(m=>m.getUsage().then(u=>{
+    import('../lib/share.js').then(m=>m.getUsage().then(u=>{
       const txt = modal.querySelector('#storage-meter-text');
       if (txt) txt.textContent = `${formatBytes(u.usage)} / ${formatBytes(u.quota)}`;
       const bar = modal.querySelector('#storage-meter-bar');
       if (bar) bar.style.width = `${Math.min(100, Math.round(u.usage/u.quota*100))}%`;
     }).catch(()=>{}));
-    modal.querySelector('#btn-logout')?.addEventListener('click', async ()=>{
-      try { await fetch('/api/auth/logout', { method:'POST', credentials:'include' }); } catch {}
+    modal.querySelector('#btn-logout')?.addEventListener('click', ()=>{
       localStorage.removeItem('auth_user'); localStorage.removeItem('demo_auth_user');
       _authUser=null; refreshAuthUI(null); showToast('Signed out'); modal.remove();
     });
@@ -327,10 +313,10 @@ export async function openAuthModal() {
           <button id="btn-discord-signin" class="w-full py-3 rounded-xl bg-[#5865F2] text-white font-black text-sm flex items-center justify-center gap-2 hover:bg-[#4752c4] shadow-lg shadow-violet-900/20">
             <i data-lucide="message-circle" class="w-5 h-5"></i> Continue with Discord
           </button>
-          <p class="text-[11px] text-slate-400 text-center leading-relaxed">Secure OAuth — your Discord avatar is saved. <br/><span class="text-slate-500">No Discord? Cloud works locally without signing in.</span></p>
+          <p class="text-[11px] text-slate-400 text-center leading-relaxed">Secure OAuth — your Discord avatar is saved. <br/><span class="text-slate-500">No Discord? You can still share links as Local User.</span></p>
           <div class="bg-slate-800/80 rounded-xl p-3 border border-slate-700/40">
-            <div class="text-[11px] font-bold text-slate-300 flex items-center gap-1.5"><i data-lucide="hard-drive" class="w-3.5 h-3.5 text-slate-500"></i> Cloud sync is off by default</div>
-            <p class="text-[11px] text-slate-500 mt-1">Enable it in <span class="text-slate-300 font-medium">Settings → Cloud Sync</span> to store maps on Cloudflare (1 MB quota).</p>
+            <div class="text-[11px] font-bold text-slate-300 flex items-center gap-1.5"><i data-lucide="share" class="w-3.5 h-3.5 text-sky-400"></i> Share via link</div>
+            <p class="text-[11px] text-slate-500 mt-1">Publish any map to get a <b class="text-sky-300">share link</b> — anyone with the link can view it. No cloud needed.</p>
           </div>
         </div>
       </div>
@@ -338,7 +324,14 @@ export async function openAuthModal() {
     document.body.appendChild(modal);
     modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.remove(); });
     try { window.lucide && window.lucide.createIcons({ root: modal }); } catch {}
-    modal.querySelector('#btn-discord-signin')?.addEventListener('click', ()=>{ location.href='/api/auth/discord'; });
+    modal.querySelector('#btn-discord-signin')?.addEventListener('click', ()=>{
+      const name = prompt('Display name:', 'Explorer');
+      if(!name) return;
+      const user = { id: `local_${Date.now()}`, provider: 'local', name: name.trim()||'Local User', avatar:'', createdAt: Date.now() };
+      try { localStorage.setItem('auth_user', JSON.stringify(user)); } catch {}
+      try { localStorage.setItem('demo_auth_user', JSON.stringify(user)); } catch {}
+      _authUser=user; refreshAuthUI(user); showToast(`Signed in as ${user.name}`); modal.remove();
+    });
   }
 }
 
@@ -374,7 +367,7 @@ export function openUploadCreationModal() {
           <button id="btn-publish-current" class="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm">Publish current</button>
           <button id="btn-upload-file-go" class="py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm border border-slate-600">Upload file</button>
         </div>
-        <p class="text-[10px] text-slate-500 text-center">Cloudflare KV — max 1 MB per user. Public maps appear in Discover.</p>
+        <p class="text-[10px] text-slate-500 text-center">Local storage — 1 MB quota. Share links work without cloud.</p>
       </div>
     </div>
   `;
@@ -402,7 +395,7 @@ export function openUploadCreationModal() {
     }
   } catch {}
   // storage meter
-  import('../lib/cloud.js').then(m=>m.getUsage().then(u=>{
+  import('../lib/share.js').then(m=>m.getUsage().then(u=>{
     const el = modal.querySelector('#upload-storage');
     if (el) el.textContent = `${formatBytes(u.usage)} / ${formatBytes(u.quota)}`;
   }).catch(()=>{ const el=modal.querySelector('#upload-storage'); if(el) el.textContent='—'; }));
@@ -415,7 +408,7 @@ export function openUploadCreationModal() {
       if (!gj.features || gj.features.length===0) { showToast('Draw something first'); return; }
       let preview = null;
       try { const canvas=document.querySelector('#map canvas'); if(canvas) preview=canvas.toDataURL('image/png'); } catch {}
-      const { publishMap } = await import('../lib/cloud.js');
+      const { publishMap } = await import('../lib/share.js');
       await publishMap({ title: name, geojson: gj, isPublic: true, preview });
       const badge=document.getElementById('badge-creations-count-header');
       if(badge) badge.textContent=String((parseInt(badge.textContent||'0',10)+1));
@@ -433,7 +426,7 @@ export function openUploadCreationModal() {
     if(!selectedFile){ showToast('Choose a .geojson file first'); return; }
     const name = modal.querySelector('#upload-name')?.value?.trim() || selectedFile.name.replace(/\.geojson$/i,'');
     try {
-      const { uploadGeoJSONFile } = await import('../lib/cloud.js');
+      const { uploadGeoJSONFile } = await import('../lib/share.js');
       await uploadGeoJSONFile(selectedFile, { isPublic: false });
       showToast(`Uploaded “${name}”`);
       modal.remove();

@@ -38,8 +38,16 @@ export function WelcomeModal() {
 
   const goDiscord = () => {
     setWelcomeCompleted(true);
-    // go to real Discord OAuth; worker will handle demo fallback if needed
-    location.href = '/api/auth/discord';
+    // local-only: prompt for display name, no Worker needed
+    const name = prompt('Display name for sharing:', 'Explorer');
+    if (name && name.trim()) {
+      try {
+        const user = { id: `local_${Date.now()}`, provider: 'local', name: name.trim(), avatar: '', createdAt: Date.now() };
+        localStorage.setItem('auth_user', JSON.stringify(user));
+      } catch {}
+    }
+    setVisible(false);
+    try { location.reload(); } catch {}
   };
 
   return (
@@ -61,14 +69,14 @@ export function WelcomeModal() {
             Welcome to<br/>GeoJSON Studio
           </h2>
           <p className="relative mt-2 text-[13px] leading-relaxed text-white/80">
-            Draw, sculpt, and export vector maps. Sign in with <b className="text-white">Discord</b> to sync your creations to the cloud.
+            Draw, sculpt, and share vector maps. <b className="text-white">Share via link</b> — anyone with the link can view it. No cloud needed.
           </p>
           <div className="relative mt-4 flex items-center gap-2 text-[11px] font-medium">
             <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur px-2.5 py-1 rounded-full border border-white/15">
-              <Icon name="hard-drive" className="w-3.5 h-3.5" /> 1 MB cloud
+              <Icon name="share" className="w-3.5 h-3.5" /> Share via link
             </span>
             <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur px-2.5 py-1 rounded-full border border-white/15">
-              <Icon name="shield-check" className="w-3.5 h-3.5" /> Optional
+              <Icon name="hard-drive" className="w-3.5 h-3.5" /> 1 MB local
             </span>
           </div>
         </div>
@@ -81,16 +89,16 @@ export function WelcomeModal() {
             </div>
             <div>
               <div className="text-sm font-bold text-white">Discover & Publish</div>
-              <div className="text-xs text-slate-400 leading-relaxed">Browse community maps, publish your current canvas, or upload any <span className="text-slate-200">.geojson</span>.</div>
+              <div className="text-xs text-slate-400 leading-relaxed">Browse demos, publish your current canvas, or upload any <span className="text-slate-200">.geojson</span> — each publish gives you a <b className="text-sky-300">share link</b>.</div>
             </div>
           </div>
           <div className="flex gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-600/15 text-emerald-400 grid place-items-center shrink-0 border border-emerald-500/20">
-              <Icon name="cloud-upload" className="w-5 h-5" />
+              <Icon name="message-circle" className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-sm font-bold text-white">Cloud is opt-in</div>
-              <div className="text-xs text-slate-400 leading-relaxed">Cloud sync is <b className="text-slate-200">disabled by default</b>. Turn it on in <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px]">Settings → Cloud Sync</span> when you want cross-device storage.</div>
+              <div className="text-sm font-bold text-white">Discord (optional)</div>
+              <div className="text-xs text-slate-400 leading-relaxed">Sign in with <b className="text-white">Discord</b> to show your avatar on shared maps. Skip if you just want to share links.</div>
             </div>
           </div>
 
@@ -102,7 +110,7 @@ export function WelcomeModal() {
             <button onClick={() => dismiss(true)} className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm active:scale-[0.98] transition">
               Continue without signing in
             </button>
-            <p className="text-[11px] text-center text-slate-500">You can enable cloud later in Settings. Local maps work offline.</p>
+            <p className="text-[11px] text-center text-slate-500">Sharing works offline via link — no cloud needed.</p>
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
-// Frontend auth helper — Discord-only, Cloudflare Worker /api/auth/*
-// Falls back to localStorage mock when Worker not available
+// Local-only auth — no Worker needed. Stores display name + avatar in localStorage.
+// Kept simple after cloud deletion: users can still share with a name, Discord is optional via display name.
 
-const API = '';
+const KEY = 'auth_user';
 let _user = null;
 let _listeners = new Set();
 
@@ -9,43 +9,35 @@ function notify() { _listeners.forEach(fn => fn(_user)); }
 export function subscribeAuth(fn) { _listeners.add(fn); return () => _listeners.delete(fn); }
 export function getUser() { return _user; }
 
+function loadLocal() {
+  try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; }
+}
+
 export async function fetchMe() {
-  try {
-    const r = await fetch(`${API}/api/auth/me`, { credentials: 'include' });
-    if (!r.ok) throw new Error('no session');
-    const j = await r.json();
-    _user = j.user || null;
-    if (_user) localStorage.setItem('auth_user', JSON.stringify(_user));
-    else localStorage.removeItem('auth_user');
-    notify();
-    return _user;
-  } catch (e) {
-    try {
-      const saved = JSON.parse(localStorage.getItem('auth_user') || localStorage.getItem('demo_auth_user') || 'null');
-      if (saved) { _user = saved; notify(); return _user; }
-    } catch {}
-    _user = null;
-    notify();
-    return null;
-  }
+  const saved = loadLocal();
+  _user = saved;
+  notify();
+  return _user;
 }
 
 export function loginWithDiscord() {
-  const url = `${API}/api/auth/discord?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
-  location.href = url;
+  // local-fallback: prompt for display name instead of OAuth when no Worker
+  const current = loadLocal();
+  const def = current?.name || '';
+  const name = prompt('Enter display name for sharing (or cancel to skip):', def || 'Local User');
+  if (name === null) return;
+  const trimmed = (name || 'Local User').trim() || 'Local User';
+  const user = { id: `local_${Date.now()}`, provider: 'local', name: trimmed, email: '', avatar: '', createdAt: Date.now() };
+  localStorage.setItem(KEY, JSON.stringify(user));
+  _user = user;
+  notify();
+  location.reload();
 }
-// backwards compat
-export function loginWith(provider) {
-  // only discord is supported now — ignore google
-  return loginWithDiscord();
-}
+export function loginWith() { return loginWithDiscord(); }
 
 export async function logout() {
-  try {
-    await fetch(`${API}/api/auth/logout`, { method: 'POST', credentials: 'include' });
-  } catch {}
   _user = null;
-  localStorage.removeItem('auth_user');
+  localStorage.removeItem(KEY);
   localStorage.removeItem('demo_auth_user');
   notify();
   location.reload();
@@ -53,8 +45,4 @@ export async function logout() {
 
 if (typeof window !== 'undefined') {
   fetchMe();
-  try {
-    const legacy = JSON.parse(localStorage.getItem('demo_auth_user') || 'null');
-    if (legacy && !_user) { _user = legacy; }
-  } catch {}
 }
