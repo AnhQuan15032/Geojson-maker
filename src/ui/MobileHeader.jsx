@@ -30,7 +30,10 @@ export function MobileHeader() {
           <button onClick={() => { actions.toggleDrawer('creations-drawer') }} title="Community Creations" aria-label="Creations" className="w-8 h-8 grid place-items-center rounded-xl text-amber-400 active:bg-slate-800 transition">
             <Icon name="compass" className="w-4 h-4" />
           </button>
-          <button onClick={() => { openAuthModal() }} id="btn-auth-mobile-top" title="Account" aria-label="Account" className="w-8 h-8 grid place-items-center rounded-xl text-sky-400 active:bg-slate-800 transition">
+          <button onClick={() => { actions.toggleDrawer('changelog-drawer') }} title="Changelog" aria-label="Changelog" className="w-8 h-8 grid place-items-center rounded-xl text-sky-400 active:bg-slate-800 transition">
+            <Icon name="scroll-text" className="w-4 h-4" />
+          </button>
+          <button onClick={() => { openAuthModal() }} id="btn-auth-mobile-top" title="Account" aria-label="Account" className="w-8 h-8 grid place-items-center rounded-xl text-sky-400 active:bg-slate-800 transition overflow-hidden">
             <Icon name="user" className="w-4 h-4" />
           </button>
           <button onClick={() => { actions.undoHistory() }} id="btn-undo-mobile" aria-label="Undo" className="w-8 h-8 grid place-items-center rounded-xl text-slate-300 disabled:opacity-35 active:bg-slate-800 active:scale-95 transition">

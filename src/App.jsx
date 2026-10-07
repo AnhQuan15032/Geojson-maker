@@ -12,6 +12,7 @@ import { ImageDrawer } from './ui/drawers/ImageDrawer';
 import { LayersDrawer } from './ui/drawers/LayersDrawer';
 import { SettingsDrawer } from './ui/drawers/SettingsDrawer';
 import { CreationsDrawer } from './ui/drawers/CreationsDrawer';
+import { ChangelogDrawer } from './ui/drawers/ChangelogDrawer';
 import { ShortcutSheet } from './ui/ShortcutSheet';
 import { Toast } from './ui/Toast';
 import { TutorialOverlay, TourSpot, TourCall, TutorialPill } from './ui/TutorialOverlay';
@@ -36,6 +37,7 @@ export default function App() {
       <ImageDrawer />
       <LayersDrawer />
       <CreationsDrawer />
+      <ChangelogDrawer />
       <TutorialOverlay />
       <TourSpot />
       <TourCall />

@@ -120,11 +120,15 @@ export function AppHeader() {
           </span>
         </button>
         {/* User Auth (Google & Discord) */}
-        <button onClick={() => { openAuthModal() }} id="btn-auth-header" title="Sign In with Google or Discord" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 hover:text-white flex items-center gap-1.5 active:scale-95 transition">
-          <Icon name="user" className="w-3.5 h-3.5 text-sky-400" />
+        <button onClick={() => { openAuthModal() }} id="btn-auth-header" title="Sign In with Google or Discord" className="bg-slate-900/90 backdrop-blur-md pl-1.5 pr-3 py-1 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 hover:text-white flex items-center gap-1.5 active:scale-95 transition">
+          <span className="w-6 h-6 rounded-full bg-slate-700 grid place-items-center"><Icon name="user" className="w-3.5 h-3.5 text-sky-400" /></span>
           <span id="text-auth-user">
             Sign In
           </span>
+        </button>
+        {/* Changelog */}
+        <button onClick={() => { actions.toggleDrawer('changelog-drawer') }} title="Changelog" aria-label="Changelog" className="bg-slate-900/90 backdrop-blur-md p-2 rounded-full shadow-lg border border-slate-700/60 text-slate-200 hover:text-sky-300 active:scale-95 transition">
+          <Icon name="scroll-text" className="w-4 h-4" />
         </button>
         {/* Settings & Appearance */}
         <button onClick={() => { actions.toggleDrawer('settings-drawer') }} title="Settings, Theme & Layout" aria-label="Settings" className="bg-slate-900/90 backdrop-blur-md p-2 rounded-full shadow-lg border border-slate-700/60 text-slate-200 hover:text-emerald-300 active:scale-95 transition">

@@ -1,8 +1,19 @@
 {
   "name": "geojson-maker",
   "compatibility_date": "2026-10-03",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "main": "worker/index.js",
+  "kv_namespaces": [
+    { "binding": "USERS", "id": "00000000000000000000000000000000", "preview_id": "00000000000000000000000000000000" },
+    { "binding": "SESSIONS", "id": "00000000000000000000000000000000", "preview_id": "00000000000000000000000000000000" },
+    { "binding": "MAPS", "id": "00000000000000000000000000000000", "preview_id": "00000000000000000000000000000000" }
+  ],
+  "vars": {
+    "BASE_URL": "https://geojson-maker.buianhquan452.workers.dev"
   },
   "previews": {}
 }

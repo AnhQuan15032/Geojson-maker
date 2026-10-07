@@ -11,10 +11,49 @@ behaviour can be diffed against it — and the test suite does exactly that.
 
 ```bash
 npm install
-npm run dev       # http://localhost:5173
+npm run dev       # http://localhost:5173 (vite) — /api proxied to wrangler on :8787
 npm run build     # production bundle in dist/
 npm run check     # module-graph check + TDZ check + tests
+# run the Worker locally (Cloudflare) alongside vite:
+npx wrangler dev --local --port 8787
 ```
+
+## New in 1.2.0 — Cloud, Auth, Discover, Changelog
+
+| Feature | What it does | Where |
+|---|---|---|
+| **Changelog** | `CHANGELOG.md` rendered in-app + `GET /api/changelog` | Header `scroll-text` → drawer |
+| **Auth — Google & Discord** | OAuth 2.0 via Worker, avatar saved (`picture` / `cdn.discordapp.com/avatars/...`), session `__Host-session` (30d, httpOnly) | Header `Sign In` → modal |
+| **Upload GeoJSON** | Drop `.geojson/.json` or **Publish current** canvas (preview from `canvas.toDataURL`) | `Upload` button + Discover drawer |
+| **Discover maps** | Public maps newest-first, tap **Load** to import via `L.geoJSON` | `Community` / `Compass` drawer — tabs **Discover / My Maps** |
+| **Cloud storage** | Cloudflare KV (`USERS`, `SESSIONS`, `MAPS`), **1 MB per user** quota, meter `used / 1.00 MB`, `402 QUOTA_EXCEEDED` if full | Header meter + upload modal + `GET /api/storage/usage` |
+
+### Cloudflare setup (1 MB quota)
+
+```bash
+# 1. create KV namespaces (once)
+wrangler kv namespace create USERS
+wrangler kv namespace create SESSIONS
+wrangler kv namespace create MAPS
+# paste the returned ids into wrangler.json kv_namespaces
+# 2. set OAuth secrets (dashboard → Workers → Settings → Variables or wrangler secret)
+wrangler secret put GOOGLE_CLIENT_ID
+wrangler secret put GOOGLE_CLIENT_SECRET
+wrangler secret put DISCORD_CLIENT_ID
+wrangler secret put DISCORD_CLIENT_SECRET
+# optional: BASE_URL (defaults to request host)
+wrangler secret put BASE_URL  # https://geojson-maker.buianhquan452.workers.dev
+```
+
+If secrets are missing the Worker falls back to **demo login** (creates a fake user, still shows avatar, still enforces 1 MB via in-memory/KV fallback) so the app works out of the box locally.
+
+Quota is enforced on `POST /api/maps`: `bytes = JSON.stringify(geojson).length + preview.length`; `usage + bytes > 1_048_576 → 402`.
+
+### Local dev without Cloudflare
+
+`src/lib/auth.js` + `src/lib/cloud.js` fallback to `localStorage` (`auth_user`, `cloud_maps`) when `fetch('/api/...')` fails — you can still log in (demo), upload, and discover without running `wrangler dev`.
+
+
 
 ## Deploying to Cloudflare Pages
 
@@ -62,17 +101,25 @@ directory.
 
 On a Workers project, set **Build command** to `npm run build` and keep the
 deploy command at its default. `wrangler.json` in this repo points the Worker's
-static assets at `./dist` and carries the empty `previews` block that
-`npx wrangler preview` requires:
+static assets at `./dist` and runs `worker/index.js` in front of them for the Cloud API:
 
 ```json
 {
-  "name": "geojson-studio",
+  "name": "geojson-maker",
   "compatibility_date": "2026-10-03",
-  "assets": { "directory": "./dist" },
-  "previews": {}
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "main": "worker/index.js",
+  "kv_namespaces": [
+    { "binding": "USERS", "id": "…", "preview_id": "…" },
+    { "binding": "SESSIONS", "id": "…", "preview_id": "…" },
+    { "binding": "MAPS", "id": "…", "preview_id": "…" }
+  ],
+  "vars": { "BASE_URL": "https://geojson-maker.buianhquan452.workers.dev" }
 }
 ```
+
+The Worker serves `GET /api/changelog`, `GET /api/auth/*`, `GET /api/discover`, `GET/POST /api/maps`, `GET /api/storage/usage` and falls through to `assets` for everything else (SPA fallback to `index.html`). See `worker/index.js` + `CHANGELOG.md`.
+
 
 Two things that will fail the build if they are wrong:
 

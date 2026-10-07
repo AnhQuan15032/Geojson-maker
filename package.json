@@ -22,6 +22,7 @@
     "migrate:jsx": "node scripts/migrate/generate-jsx.mjs",
     "migrate:icons": "node scripts/migrate/generate-icons.mjs",
     "migrate:actions": "node scripts/migrate/generate-actions.mjs",
+    "dev:worker": "wrangler dev --local --port 8787",
     "prepare": "node -e \"const fs=require('fs'); if(!fs.existsSync('dist')){console.log('dist missing — running vite build...'); require('child_process').execSync('npm run build',{stdio:'inherit'})}\"",
     "deploy": "npm run build && npx wrangler deploy",
     "deploy:versions": "npm run build && npx wrangler versions upload",
