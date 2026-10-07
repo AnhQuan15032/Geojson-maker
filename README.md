@@ -115,7 +115,7 @@ directory.
 
 On a Workers project, set **Build command** to `npm run build` and keep the
 deploy command at its default. `wrangler.json` in this repo points the Worker's
-static assets at `./dist` and runs `worker/index.js` in front of them for the Cloud API:
+static assets at `./dist` and runs `worker/index.js` in front of them for the Cloud API (no KV = deploys instantly, uses in-memory + `localStorage` fallback):
 
 ```json
 {
@@ -123,16 +123,21 @@ static assets at `./dist` and runs `worker/index.js` in front of them for the Cl
   "compatibility_date": "2026-10-03",
   "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
   "main": "worker/index.js",
-  "kv_namespaces": [
-    { "binding": "USERS", "id": "…", "preview_id": "…" },
-    { "binding": "SESSIONS", "id": "…", "preview_id": "…" },
-    { "binding": "MAPS", "id": "…", "preview_id": "…" }
-  ],
   "vars": { "BASE_URL": "https://geojson-maker.buianhquan452.workers.dev" }
 }
 ```
 
-The Worker serves `GET /api/changelog`, `GET /api/auth/*`, `GET /api/discover`, `GET/POST /api/maps`, `GET /api/storage/usage` and falls through to `assets` for everything else (SPA fallback to `index.html`). See `worker/index.js` + `CHANGELOG.md`.
+Add KV later for persistence — paste real ids from `wrangler kv namespace create`:
+
+```json
+  "kv_namespaces": [
+    { "binding": "USERS", "id": "abc…", "preview_id": "abc_preview…" },
+    { "binding": "SESSIONS", "id": "def…", "preview_id": "def_preview…" },
+    { "binding": "MAPS", "id": "ghi…", "preview_id": "ghi_preview…" }
+  ],
+```
+
+The Worker serves `GET /api/changelog`, `GET /api/auth/*`, `GET /api/discover`, `GET/POST /api/maps`, `GET /api/storage/usage` and falls through to `assets` for everything else (SPA fallback to `index.html`). Without KV it uses `worker/utils.js` in-memory `Map` (ephemeral) and the frontend's `localStorage` — same 1 MB quota, just not shared across isolates. See `worker/index.js` + `CHANGELOG.md`.
 
 
 Two things that will fail the build if they are wrong:
