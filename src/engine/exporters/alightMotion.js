@@ -1,11 +1,23 @@
 // Split out of the original single-file engine (see legacy/index.html).
-// Origin: ALIGHT MOTION XML EXPORTER
+// Origin: ALIGHT MOTION XML EXPORTER — verified against AM 5.0.273 sample + AutoTrace
+// Facts: position absolute = <location> + path coords; XML order bottom→top;
+//        path uses M/L/C only; closed path ends with L to start, not Z; color #aarrggbb.
 
 import L from 'leaflet';
 import { S } from '../state.js';
 import { escapeXml } from '../../lib/util.js';
 import { PREVIEW_COLOR } from '../constants.js';
 import { showToast } from '../uiHelpers.js';
+
+// helpers matching AutoTrace verified format
+const fmt = n => {
+  const s = String(Math.round(n * 1e6) / 1e6);
+  return s.includes('.') ? s : s + '.0';
+};
+const fix6 = n => {
+  const [a, b = ''] = String(Math.round(n * 1e6) / 1e6).split('.');
+  return a + '.' + (b + '000000').slice(0, 6);
+};
 
 // ================= ALIGHT MOTION XML EXPORTER =================
 export function downloadAlightMotionXML() {
@@ -34,7 +46,9 @@ export function downloadAlightMotionXML() {
   const dLat = Math.max(north - south, 0.0001);
   const scale = Math.min(maxDrawW / dLng, maxDrawH / dLat);
   let shapesXml = '';
-  let shapeIndex = 1000;
+  // Use large IDs like AutoTrace (2000000000+) to avoid collision with AM internal counter
+  const baseId = 2000000000;
+  let shapeCounter = 0;
   let counter = 0;
   S.drawnItems.eachLayer(layer => {
     counter++;
@@ -44,60 +58,77 @@ export function downloadAlightMotionXML() {
     const name = props.name || `Shape_${idx}`;
     const fillColor = opts.fillColor || props.fill || PREVIEW_COLOR;
     const strokeW = Number(opts.weight || props['stroke-width'] || 0) || 0;
+    // Stroke color may differ from fill for polygons
+    const strokeColorRaw = opts.color || props.stroke || null;
     const amFillHex = hexToAlightColor(fillColor, 1.0);
+    const amStrokeHex = strokeColorRaw ? hexToAlightColor(strokeColorRaw, 1.0) : amFillHex;
+
     if (layer instanceof L.Polygon) {
       const latlngs = layer.getLatLngs();
-      const {
-        pathData,
-        cx,
-        cy
-      } = buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
+      const { pathData, cx, cy } = buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
       if (pathData) {
-        shapeIndex++;
-        shapesXml += `  <shape id="${shapeIndex}" label="${escapeXml(name)}" startTime="0" endTime="5000" fillType="color" s=".path">\n`;
+        shapeCounter++;
+        const id = baseId + shapeCounter;
+        // docs: imported shape has no s attribute; custom outline lives in <path d> (legacy) or <parameter><contour>
+        // We follow verified AutoTrace sample which uses <path d> directly with mediaFillMode
+        shapesXml += `  <shape id="${id}" label="${escapeXml(name)}" startTime="0" endTime="5000" fillType="color" mediaFillMode="fill">\n`;
         shapesXml += `    <transform>\n`;
-        shapesXml += `      <location value="${cx.toFixed(6)},${cy.toFixed(6)},0.000000" />\n`;
-        shapesXml += `      <scale value="1.000000,1.000000" />\n`;
+        shapesXml += `      <location value="${fix6(cx)},${fix6(cy)},0.000000" />\n`;
         shapesXml += `    </transform>\n`;
         shapesXml += `    <fillColor value="${amFillHex}" />\n`;
         if (strokeW > 0) {
-          shapesXml += `    <path-stroke direction="centered" end-size="1.500000">\n`;
-          shapesXml += `      <color value="${amFillHex}" />\n`;
-          shapesXml += `      <size value="${strokeW.toFixed(6)}" />\n`;
-          shapesXml += `    </path-stroke>\n`;
+          // verified edge decoration: attributes directly, not nested <color>/<size>
+          shapesXml += `    <path-stroke direction="centered" color="${amStrokeHex}" size="${fix6(strokeW)}" />\n`;
         }
         shapesXml += `    <path d="${pathData}" />\n`;
         shapesXml += `  </shape>\n`;
       }
     } else if (layer instanceof L.Polyline) {
+      // Leaflet Polygon is also Polyline, but we handled Polygon first — this is line-only
       const latlngs = layer.getLatLngs();
-      const {
-        pathData,
-        cx,
-        cy
-      } = buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
+      const { pathData, cx, cy } = buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
       const lineW = strokeW > 0 ? strokeW : 3;
       const lineColor = hexToAlightColor(opts.color || props.stroke || fillColor, 1.0);
       if (pathData) {
-        shapeIndex++;
-        shapesXml += `  <shape id="${shapeIndex}" label="${escapeXml(name)}" startTime="0" endTime="5000" fillType="none" s=".path">\n`;
+        shapeCounter++;
+        const id = baseId + shapeCounter;
+        shapesXml += `  <shape id="${id}" label="${escapeXml(name)}" startTime="0" endTime="5000" fillType="none" mediaFillMode="fill">\n`;
         shapesXml += `    <transform>\n`;
-        shapesXml += `      <location value="${cx.toFixed(6)},${cy.toFixed(6)},0.000000" />\n`;
-        shapesXml += `      <scale value="1.000000,1.000000" />\n`;
+        shapesXml += `      <location value="${fix6(cx)},${fix6(cy)},0.000000" />\n`;
         shapesXml += `    </transform>\n`;
-        shapesXml += `    <path-stroke direction="centered" end-size="1.500000">\n`;
-        shapesXml += `      <color value="${lineColor}" />\n`;
-        shapesXml += `      <size value="${lineW.toFixed(6)}" />\n`;
-        shapesXml += `    </path-stroke>\n`;
+        // For lines, stroke is the visible element; no fillColor needed when fillType none but we emit stroke
+        shapesXml += `    <path-stroke direction="centered" color="${lineColor}" size="${fix6(lineW)}" />\n`;
+        shapesXml += `    <path d="${pathData}" />\n`;
+        shapesXml += `  </shape>\n`;
+      }
+    } else if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
+      // Export point as small diamond/circle shape centered at point location
+      let latlng = null;
+      if (typeof layer.getLatLng === 'function') latlng = layer.getLatLng();
+      if (latlng) {
+        const x = canvasWidth / 2 + (latlng.lng - centerLng) * cosLat * scale;
+        const y = canvasHeight / 2 - (latlng.lat - centerLat) * scale;
+        // small 28px square centered at marker, relative path around 0,0 with location at absolute x,y
+        const r = 14;
+        // Use fmt for relative coords
+        const pathData = `M ${fmt(-r)} ${fmt(-r)}L ${fmt(r)} ${fmt(-r)}L ${fmt(r)} ${fmt(r)}L ${fmt(-r)} ${fmt(r)}L ${fmt(-r)} ${fmt(-r)}`;
+        shapeCounter++;
+        const id = baseId + shapeCounter;
+        shapesXml += `  <shape id="${id}" label="${escapeXml(name)}" startTime="0" endTime="5000" fillType="color" mediaFillMode="fill">\n`;
+        shapesXml += `    <transform>\n`;
+        shapesXml += `      <location value="${fix6(x)},${fix6(y)},0.000000" />\n`;
+        shapesXml += `    </transform>\n`;
+        shapesXml += `    <fillColor value="${amFillHex}" />\n`;
         shapesXml += `    <path d="${pathData}" />\n`;
         shapesXml += `  </shape>\n`;
       }
     }
   });
+  // Verified header matches AutoTrace/real export: includes modifiedTime, amver/ffver, no retime extras missing
   let xml = `<?xml version='1.0' encoding='UTF-8' ?>\n`;
   xml += `<!-- Created by Alight Motion (http://alightmotion.com) -->\n`;
   xml += `<!-- Exported from GeoJSON Studio -->\n`;
-  xml += `<scene title="Map Vector Project" width="${canvasWidth}" height="${canvasHeight}" exportWidth="${canvasWidth}" exportHeight="${canvasHeight}" precompose="dynamicResolution" bgcolor="#ff000000" totalTime="5000" fps="30" amver="1002592" ffver="106" am="com.alightcreative.motion/5.0.0" amplatform="android" retime="freeze" retimeAdaptFPS="false">\n`;
+  xml += `<scene title="Map Vector Project" width="${canvasWidth}" height="${canvasHeight}" exportWidth="${canvasWidth}" exportHeight="${canvasHeight}" precompose="dynamicResolution" bgcolor="#ff000000" totalTime="5000" fps="30" modifiedTime="${Date.now()}" amver="1028425" ffver="106" am="com.alightcreative.motion/5.0.273.1028425" amplatform="android" retime="freeze" retimeAdaptFPS="false">\n`;
   xml += shapesXml;
   xml += `</scene>`;
   const blob = new Blob([xml], {
@@ -127,14 +158,8 @@ export function buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat,
     ring.forEach(ll => {
       const x = originX + (ll.lng - centerLng) * cosLat * scale;
       const y = originY - (ll.lat - centerLat) * scale;
-      pts.push({
-        x,
-        y
-      });
-      allPoints.push({
-        x,
-        y
-      });
+      pts.push({ x, y });
+      allPoints.push({ x, y });
     });
     if (pts.length > 0) rings.push(pts);
   }
@@ -162,14 +187,24 @@ export function buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat,
   });
   const cx = sumX / allPoints.length;
   const cy = sumY / allPoints.length;
+  // Build path: M x y L x y ... L x0 y0 for each closed ring (no Z, per verified format)
   let d = '';
   rings.forEach(ring => {
-    ring.forEach((p, i) => {
-      const rx = (p.x - cx).toFixed(2);
-      const ry = (p.y - cy).toFixed(2);
-      if (i === 0) d += `M ${rx} ${ry} `;else d += `L ${rx} ${ry} `;
+    let r = ring;
+    if (r.length > 1 && Math.abs(r[0].x - r[r.length - 1].x) < 1e-9 && Math.abs(r[0].y - r[r.length - 1].y) < 1e-9) r = r.slice(0, -1);
+    let startRx = null, startRy = null;
+    r.forEach((p, i) => {
+      const rx = fmt(p.x - cx);
+      const ry = fmt(p.y - cy);
+      if (i === 0) {
+        d += `M ${rx} ${ry}`;
+        startRx = rx;
+        startRy = ry;
+      } else {
+        d += `L ${rx} ${ry}`;
+      }
     });
-    d += 'Z ';
+    if (startRx !== null) d += `L ${startRx} ${startRy}`;
   });
   return {
     pathData: d.trim(),
@@ -184,16 +219,27 @@ export function buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat,
     cx: originX,
     cy: originY
   };
-  const flat = Array.isArray(latlngs[0]) ? latlngs.flat(3) : latlngs;
-  const allPoints = [];
-  flat.forEach(ll => {
+  // Support both LineString and MultiLineString: normalize to array of segments
+  let segments = [];
+  if (latlngs.length > 0 && Array.isArray(latlngs[0])) {
+    // Check if latlngs[0][0] is LatLng (multi) or number? leaflet uses LatLng objects
+    const first = latlngs[0];
+    const isMulti = first.length > 0 && typeof first[0] === 'object' && first[0] !== null && 'lat' in first[0];
+    if (isMulti) segments = latlngs;
+    else {
+      // Single ring but wrapped once (e.g. from polygon-like call) — treat as one segment with possible nesting
+      const flat = latlngs.flat(2);
+      segments = [flat.filter(p => p && typeof p === 'object' && 'lat' in p)];
+    }
+  } else {
+    segments = [latlngs];
+  }
+  const transformedSegments = segments.map(seg => seg.map(ll => {
     const x = originX + (ll.lng - centerLng) * cosLat * scale;
     const y = originY - (ll.lat - centerLat) * scale;
-    allPoints.push({
-      x,
-      y
-    });
-  });
+    return { x, y };
+  }));
+  const allPoints = transformedSegments.flat();
   if (allPoints.length === 0) return {
     pathData: '',
     cx: originX,
@@ -208,10 +254,13 @@ export function buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat,
   const cx = sumX / allPoints.length;
   const cy = sumY / allPoints.length;
   let d = '';
-  allPoints.forEach((p, i) => {
-    const rx = (p.x - cx).toFixed(2);
-    const ry = (p.y - cy).toFixed(2);
-    if (i === 0) d += `M ${rx} ${ry} `;else d += `L ${rx} ${ry} `;
+  transformedSegments.forEach(seg => {
+    seg.forEach((p, i) => {
+      const rx = fmt(p.x - cx);
+      const ry = fmt(p.y - cy);
+      if (i === 0) d += `M ${rx} ${ry}`;
+      else d += `L ${rx} ${ry}`;
+    });
   });
   return {
     pathData: d.trim(),
