@@ -2,6 +2,14 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.2.3] — 2026-10-07 — Fix coastline bug, actual continent load
+
+### Fixed
+- **Coastline bug** — `loadGlobalLandmass` now tries 3 CDNs (`jsdelivr`, `unpkg`, `jsdelivr@2.0.2`), was stuck on empty cache (`[]` truthy) and leaked `landLoadPromise`; now clears promise/pending on finish, deletes empty cache on failure to allow retry, validates `list.length>0`, and shows `failed` status correctly.
+
+### Added
+- **Actual continent load** — replaces 9-point rough polygons with real Natural Earth 110m countries grouped by `CONTINENT` (Africa, Europe, Asia, N/S America, Oceania, Antarctica) via `ne_110m_admin_0_countries.geojson` (raw `nvkelso` mirror with fallback to `cdn.jsdelivr.net`/`unpkg`). `getMap(id)` now unions countries per continent with `turf.union` (with `ensureHeavyLibs`, chunked + `setTimeout` yield), caches result, falls back to rough if offline.
+
 ## [1.2.2] — 2026-10-07 — Delete storage, fix Load, add continents
 
 ### Removed

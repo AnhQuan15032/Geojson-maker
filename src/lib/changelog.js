@@ -1,5 +1,14 @@
 export const CHANGELOG = [
   {
+    version: '1.2.3',
+    date: '2026-10-07',
+    title: 'Fix coastline bug, actual continent load',
+    changes: [
+      'Fixed coastline bug — loadGlobalLandmass now 3-CDN fallback, clears promise, allows retry, validates list',
+      'Actual continent load — real Natural Earth 110m countries grouped by CONTINENT and unioned with turf, cached, fallback to rough',
+    ],
+  },
+  {
     version: '1.2.2',
     date: '2026-10-07',
     title: 'Delete storage, fix Load, add continents',

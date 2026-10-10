@@ -455,7 +455,8 @@ export function updateCountriesUI() {
 
 export function loadGlobalLandmass(level) {
   const lvl = level || S.currentLandLevel;
-  if (S.landCache[lvl]) {
+  // Fix coastline bug: empty array is falsy for retry — check length, allow retry on failed cache
+  if (S.landCache[lvl] && S.landCache[lvl].length) {
     if (lvl === S.currentLandLevel) {
       S.landFeaturesList = S.landCache[lvl];
       updateCoastlineStatus('ready');
@@ -466,10 +467,27 @@ export function loadGlobalLandmass(level) {
   S.pendingLandLevel = lvl;
   S.landLoadPromise = (async () => {
     const file = LAND_SOURCES[lvl].file;
+    // coastline bug fix: try multiple CDNs (jsdelivr + unpkg + cdnjs fallback) and clear promise on finish
+    const urls = [
+      `https://cdn.jsdelivr.net/npm/world-atlas@2/${file}`,
+      `https://unpkg.com/world-atlas@2.0.2/${file}`,
+      `https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/${file}`,
+    ];
+    let topo = null;
+    let lastErr = null;
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP '+res.status+' for '+url);
+        topo = await res.json();
+        break;
+      } catch (e) {
+        lastErr = e;
+        console.warn('Land fetch failed for', url, e.message);
+      }
+    }
+    if (!topo) throw lastErr || new Error('All land CDNs failed');
     try {
-      const res = await fetch(`https://cdn.jsdelivr.net/npm/world-atlas@2/${file}`);
-      if (!res.ok) throw new Error('CDN retry');
-      const topo = await res.json();
       await ensureHeavyLibs();
       const landGeo = topojson.feature(topo, topo.objects.land);
       const list = [];
@@ -500,6 +518,7 @@ export function loadGlobalLandmass(level) {
           list.push(f);
         }
       });
+      if (list.length === 0) throw new Error('No land features parsed');
       S.landCache[lvl] = list;
       if (lvl === S.currentLandLevel) {
         S.landFeaturesList = list;
@@ -507,13 +526,23 @@ export function loadGlobalLandmass(level) {
       }
     } catch (err) {
       console.warn('Land loader failed:', err);
-      S.landCache[lvl] = [];
+      // allow retry: don't cache empty, delete entry
+      if (S.landCache[lvl]) delete S.landCache[lvl];
       if (lvl === S.currentLandLevel) {
         S.landFeaturesList = [];
         updateCoastlineStatus('failed');
       }
+      throw err;
+    } finally {
+      // coastline bug fix: clear promise so next retry can happen
+      if (S.pendingLandLevel === lvl) {
+        S.landLoadPromise = null;
+        S.pendingLandLevel = null;
+      }
     }
   })();
+  // attach catch to prevent unhandled rejection from breaking status
+  S.landLoadPromise.catch(()=>{});
   return S.landLoadPromise;
 }
 

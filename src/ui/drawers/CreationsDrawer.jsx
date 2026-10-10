@@ -38,9 +38,17 @@ export function CreationsDrawer() {
     return () => { obs.disconnect(); el.removeEventListener('refresh', onRefresh); };
   }, []);
 
+  const [loadingId, setLoadingId] = useState(null);
+
   // Robust load — waits for map if needed, never silently fails to be clickable
   const handleLoad = async (map) => {
     try {
+      // For continents, always fetch real geometry (Natural Earth union) — may take 1-2s first time
+      const isContinent = map.kind === 'continent' || map.id?.startsWith('continent_');
+      if (isContinent) {
+        setLoadingId(map.id);
+        showToast(`Loading real ${map.title}…`);
+      }
       // Wait up to 2s for engine to be ready (fixes "not clickable" when clicked too early)
       for (let i = 0; i < 20; i++) {
         if (S.map && S.drawnItems) break;
@@ -48,17 +56,27 @@ export function CreationsDrawer() {
       }
       if (!S.map || !S.drawnItems) {
         showToast('Map not ready yet — wait a second and try again');
+        if (isContinent) setLoadingId(null);
         return;
       }
       let full = map;
-      // if passed an id or missing geojson, fetch it
-      if (!map.geojson) {
+      // if passed an id or missing geojson, fetch it — and for continents fetch real regardless
+      if (!map.geojson || isContinent) {
         try {
           const fetched = await getMap(map.id);
           full = fetched.map || fetched;
+          // getMap for continents returns real GeoJSON; use it
         } catch (e) {
-          showToast('Could not fetch map — try again');
-          return;
+          if (isContinent) {
+            console.warn('Real continent failed, using fallback', e);
+            full = map; // fallback to rough polygon already in map
+          } else {
+            showToast('Could not fetch map — try again');
+            if (isContinent) setLoadingId(null);
+            return;
+          }
+        } finally {
+          if (isContinent) setLoadingId(null);
         }
       }
       const gj = full.geojson || full;
@@ -157,11 +175,12 @@ export function CreationsDrawer() {
                     <div className="text-xs font-bold text-white truncate">{m.title}</div>
                     <button
                       type="button"
+                      disabled={loadingId===m.id}
                       onClick={()=>handleLoadContinent(m)}
                       onTouchEnd={(e)=>{ e.preventDefault(); handleLoadContinent(m); }}
-                      className="w-full py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-xs font-bold text-white cursor-pointer touch-manipulation select-none relative z-10 pointer-events-auto"
+                      className={`w-full py-2.5 rounded-xl text-xs font-bold text-white cursor-pointer touch-manipulation select-none relative z-10 pointer-events-auto ${loadingId===m.id ? 'bg-slate-600 opacity-60' : 'bg-slate-700 hover:bg-slate-600 active:bg-slate-500'}`}
                       style={{pointerEvents:'auto'}}
-                    >Load</button>
+                    >{loadingId===m.id ? 'Loading…' : 'Load'}</button>
                   </div>
                 </div>
               ))}
