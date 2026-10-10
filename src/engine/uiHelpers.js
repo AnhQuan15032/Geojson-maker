@@ -203,11 +203,8 @@ export function toggleMapLegend() {
 // ================= AUTH & COMMUNITY (Cloudflare) =================
 let _authUser = null;
 
-function formatBytes(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
+// formatBytes kept for legacy but not used (storage deleted)
+function formatBytes(n) { if (n < 1024) return `${n} B`; if (n < 1024*1024) return `${(n/1024).toFixed(1)} KB`; return `${(n/1024/1024).toFixed(2)} MB`; }
 
 export function refreshAuthUI(user) {
   _authUser = user || null;
@@ -236,16 +233,7 @@ export function refreshAuthUI(user) {
     setBtn(btn, null);
     setBtn(mobileBtn, null);
   }
-  // also update storage meter if present
-  const meter = document.getElementById('storage-meter-text');
-  if (meter && user) {
-    // fetch usage async
-    import('../lib/share.js').then(m => m.getUsage().then(u => {
-      meter.textContent = `${formatBytes(u.usage)} / ${formatBytes(u.quota)}`;
-      const bar = document.getElementById('storage-meter-bar');
-      if (bar) bar.style.width = `${Math.min(100, Math.round(u.usage / u.quota * 100))}%`;
-    }).catch(()=>{}));
-  }
+  // storage deleted — no meter
 }
 
 async function fetchMeAndRefresh() {
@@ -280,24 +268,17 @@ export async function openAuthModal() {
           <div class="bg-slate-800 rounded-2xl p-3 border border-slate-700/40">
             <div class="text-xs font-bold text-white">${user.name}</div>
             <div class="text-[11px] text-slate-400">${user.email||''} · via ${user.provider}</div>
-            <div class="mt-2 flex items-center gap-2 text-[11px] text-slate-500"><i data-lucide="hard-drive" class="w-3.5 h-3.5"></i> <span id="storage-meter-text">Loading…</span></div>
-            <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden mt-1"><div id="storage-meter-bar" class="h-full bg-emerald-500" style="width:0%"></div></div>
+            <div class="mt-2 text-[11px] text-slate-500">No storage — Discover loads continents offline</div>
           </div>
           <button id="btn-logout" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-sm">Sign out</button>
-          <p class="text-[10px] text-slate-500 text-center">Cloudflare KV — 1 MB quota</p>
+          <p class="text-[10px] text-slate-500 text-center">Storage deleted</p>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.remove(); });
     try { window.lucide && window.lucide.createIcons({ root: modal }); } catch {}
-    // load usage
-    import('../lib/share.js').then(m=>m.getUsage().then(u=>{
-      const txt = modal.querySelector('#storage-meter-text');
-      if (txt) txt.textContent = `${formatBytes(u.usage)} / ${formatBytes(u.quota)}`;
-      const bar = modal.querySelector('#storage-meter-bar');
-      if (bar) bar.style.width = `${Math.min(100, Math.round(u.usage/u.quota*100))}%`;
-    }).catch(()=>{}));
+    // no storage meter
     modal.querySelector('#btn-logout')?.addEventListener('click', ()=>{
       localStorage.removeItem('auth_user'); localStorage.removeItem('demo_auth_user');
       _authUser=null; refreshAuthUI(null); showToast('Signed out'); modal.remove();
@@ -315,8 +296,8 @@ export async function openAuthModal() {
           </button>
           <p class="text-[11px] text-slate-400 text-center leading-relaxed">Secure OAuth — your Discord avatar is saved. <br/><span class="text-slate-500">No Discord? You can still share links as Local User.</span></p>
           <div class="bg-slate-800/80 rounded-xl p-3 border border-slate-700/40">
-            <div class="text-[11px] font-bold text-slate-300 flex items-center gap-1.5"><i data-lucide="share" class="w-3.5 h-3.5 text-sky-400"></i> Share via link</div>
-            <p class="text-[11px] text-slate-500 mt-1">Publish any map to get a <b class="text-sky-300">share link</b> — anyone with the link can view it. No cloud needed.</p>
+            <div class="text-[11px] font-bold text-slate-300 flex items-center gap-1.5"><i data-lucide="globe-2" class="w-3.5 h-3.5 text-cyan-400"></i> Load continents</div>
+            <p class="text-[11px] text-slate-500 mt-1">Open <b class="text-cyan-300">Discover → Continents</b> to add Africa, Europe, Asia… as editable shapes.</p>
           </div>
         </div>
       </div>
@@ -336,105 +317,23 @@ export async function openAuthModal() {
 }
 
 export function openUploadCreationModal() {
-  const existing = document.getElementById('upload-modal');
-  if (existing) { existing.remove(); return; }
-  const modal = document.createElement('div');
-  modal.id = 'upload-modal';
-  modal.className = 'fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm';
-  modal.innerHTML = `
-    <div class="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden">
-      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-        <h3 class="text-sm font-bold text-white flex items-center gap-2"><i data-lucide="cloud-upload" class="w-4 h-4 text-emerald-400"></i> Publish creation</h3>
-        <button class="p-1 text-slate-400 hover:text-white" onclick="document.getElementById('upload-modal').remove()"><i data-lucide="x" class="w-5 h-5"></i></button>
-      </div>
-      <div class="p-5 space-y-3">
-        <label class="block text-xs font-bold text-slate-300">Creation name</label>
-        <input id="upload-name" placeholder="e.g. My archipelago" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500" />
-        <label class="block text-xs font-bold text-slate-300">Upload GeoJSON file <span class="font-normal text-slate-500">(.geojson / .json)</span></label>
-        <label class="flex items-center gap-2 w-full bg-slate-800 border border-dashed border-slate-600 rounded-xl px-3 py-3 cursor-pointer hover:border-emerald-500">
-          <i data-lucide="file-up" class="w-4 h-4 text-slate-400"></i>
-          <span class="text-xs text-slate-300">Choose file or drop here</span>
-          <input id="upload-file" type="file" accept=".geojson,.json,application/geo+json,application/json" class="hidden"/>
-        </label>
-        <div id="upload-file-name" class="text-[11px] text-emerald-400 hidden"></div>
-        <label class="block text-xs font-bold text-slate-300">Preview</label>
-        <div id="upload-preview" class="w-full h-32 bg-slate-800 border border-slate-700 rounded-xl grid place-items-center text-slate-500 text-xs overflow-hidden">No preview — current map will be used</div>
-        <div class="bg-slate-800 rounded-xl p-2.5 border border-slate-700/40 flex items-center justify-between">
-          <span class="text-[11px] text-slate-400 flex items-center gap-1.5"><i data-lucide="hard-drive" class="w-3.5 h-3.5"></i> Storage</span>
-          <span id="upload-storage" class="text-[11px] font-mono text-slate-400">Loading…</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <button id="btn-publish-current" class="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm">Publish current</button>
-          <button id="btn-upload-file-go" class="py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm border border-slate-600">Upload file</button>
-        </div>
-        <p class="text-[10px] text-slate-500 text-center">Local storage — 1 MB quota. Share links work without cloud.</p>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.remove(); });
-  try { window.lucide && window.lucide.createIcons({ root: modal }); } catch {}
-  let selectedFile = null;
-  const fileInput = modal.querySelector('#upload-file');
-  const fileNameEl = modal.querySelector('#upload-file-name');
-  fileInput?.addEventListener('change', (e)=>{
-    selectedFile = e.target.files?.[0]||null;
-    if (selectedFile) { fileNameEl.textContent = `${selectedFile.name} — ${formatBytes(selectedFile.size)}`; fileNameEl.classList.remove('hidden'); }
-    else fileNameEl.classList.add('hidden');
-  });
-  // preview from map canvas
-  try {
-    const canvas = document.querySelector('#map canvas');
-    const preview = modal.querySelector('#upload-preview');
-    if (canvas && preview) {
-      const img = document.createElement('img');
-      img.src = canvas.toDataURL();
-      img.className = 'w-full h-full object-cover';
-      preview.innerHTML = '';
-      preview.appendChild(img);
-    }
-  } catch {}
-  // storage meter
-  import('../lib/share.js').then(m=>m.getUsage().then(u=>{
-    const el = modal.querySelector('#upload-storage');
-    if (el) el.textContent = `${formatBytes(u.usage)} / ${formatBytes(u.quota)}`;
-  }).catch(()=>{ const el=modal.querySelector('#upload-storage'); if(el) el.textContent='—'; }));
-  // publish current
-  modal.querySelector('#btn-publish-current')?.addEventListener('click', async ()=>{
-    const name = modal.querySelector('#upload-name')?.value?.trim() || 'Untitled';
+  // Storage deleted — Upload now just opens a file picker and adds GeoJSON directly to the map
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.geojson,.json,application/geo+json,application/json';
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
     try {
-      const { liveGeoJSONString } = await import('./quickTools.js');
-      const gj = JSON.parse(liveGeoJSONString(false));
-      if (!gj.features || gj.features.length===0) { showToast('Draw something first'); return; }
-      let preview = null;
-      try { const canvas=document.querySelector('#map canvas'); if(canvas) preview=canvas.toDataURL('image/png'); } catch {}
-      const { publishMap } = await import('../lib/share.js');
-      await publishMap({ title: name, geojson: gj, isPublic: true, preview });
-      const badge=document.getElementById('badge-creations-count-header');
-      if(badge) badge.textContent=String((parseInt(badge.textContent||'0',10)+1));
-      showToast(`Published “${name}”`);
-      modal.remove();
-      // refresh discover drawer if open
-      const d=document.getElementById('creations-drawer');
-      if(d && d.classList.contains('open')) { /* trigger refresh via custom event */ d.dispatchEvent(new CustomEvent('refresh')); }
-    } catch(e){
-      if(e.data?.error==='QUOTA_EXCEEDED' || e.message==='QUOTA_EXCEEDED') showToast(`Quota exceeded — 1 MB limit`);
-      else showToast('Publish failed: '+(e.message||'error'));
+      const { importGeoJSONFile } = await import('./geojsonLoader.js');
+      await importGeoJSONFile(file);
+      showToast(`Loaded “${file.name}”`);
+    } catch (err) {
+      showToast('Load failed: ' + (err.message||'invalid GeoJSON'));
     }
-  });
-  modal.querySelector('#btn-upload-file-go')?.addEventListener('click', async ()=>{
-    if(!selectedFile){ showToast('Choose a .geojson file first'); return; }
-    const name = modal.querySelector('#upload-name')?.value?.trim() || selectedFile.name.replace(/\.geojson$/i,'');
-    try {
-      const { uploadGeoJSONFile } = await import('../lib/share.js');
-      await uploadGeoJSONFile(selectedFile, { isPublic: false });
-      showToast(`Uploaded “${name}”`);
-      modal.remove();
-    } catch(e){
-      if(e.data?.error==='QUOTA_EXCEEDED') showToast('Quota exceeded — 1 MB');
-      else showToast('Upload failed: '+(e.message||'invalid GeoJSON'));
-    }
-  });
+  };
+  input.click();
 }
+// ==
 
 // ================= INTERACTIVE TUTORIAL =================

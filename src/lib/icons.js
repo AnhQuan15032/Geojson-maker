@@ -105,6 +105,7 @@ import {
   Tag,
   Target,
   Trash2,
+  Snowflake,
   Type,
   Undo2,
   Unlock,
@@ -218,6 +219,7 @@ export const ICONS = {
   "wand-2": Wand2,
   "wand-sparkles": WandSparkles,
   "waves": Waves,
+  "snowflake": Snowflake,
   "x": X,
   "zap": Zap,
 };

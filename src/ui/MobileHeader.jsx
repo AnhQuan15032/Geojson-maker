@@ -109,7 +109,7 @@ export function MobileHeader() {
             </div>
             <div className="px-3 pb-3">
               <div className="h-px bg-slate-800 mb-2" />
-              <p className="text-[10px] text-slate-500 text-center">Cloud sync is off by default — enable in Settings → Cloud Sync</p>
+              <p className="text-[10px] text-slate-500 text-center">No storage — Discover loads demos & continents offline</p>
             </div>
           </div>
         )}

@@ -69,14 +69,14 @@ export function WelcomeModal() {
             Welcome to<br/>GeoJSON Studio
           </h2>
           <p className="relative mt-2 text-[13px] leading-relaxed text-white/80">
-            Draw, sculpt, and share vector maps. <b className="text-white">Share via link</b> — anyone with the link can view it. No cloud needed.
+            Draw, load, and export vector maps. <b className="text-white">Load continents</b> or any country as editable shapes.
           </p>
           <div className="relative mt-4 flex items-center gap-2 text-[11px] font-medium">
             <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur px-2.5 py-1 rounded-full border border-white/15">
-              <Icon name="share" className="w-3.5 h-3.5" /> Share via link
+              <Icon name="globe-2" className="w-3.5 h-3.5" /> 7 continents
             </span>
             <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur px-2.5 py-1 rounded-full border border-white/15">
-              <Icon name="hard-drive" className="w-3.5 h-3.5" /> 1 MB local
+              <Icon name="trash-2" className="w-3.5 h-3.5" /> no storage
             </span>
           </div>
         </div>
@@ -84,12 +84,12 @@ export function WelcomeModal() {
         {/* body */}
         <div className="p-5 space-y-4 overflow-y-auto">
           <div className="flex gap-3">
-            <div className="w-9 h-9 rounded-xl bg-violet-600/15 text-violet-400 grid place-items-center shrink-0 border border-violet-500/20">
+            <div className="w-9 h-9 rounded-xl bg-cyan-600/15 text-cyan-400 grid place-items-center shrink-0 border border-violet-500/20">
               <Icon name="compass" className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-sm font-bold text-white">Discover & Publish</div>
-              <div className="text-xs text-slate-400 leading-relaxed">Browse demos, publish your current canvas, or upload any <span className="text-slate-200">.geojson</span> — each publish gives you a <b className="text-sky-300">share link</b>.</div>
+              <div className="text-sm font-bold text-white">Load continents</div>
+              <div className="text-xs text-slate-400 leading-relaxed">Open <span className="text-cyan-300">Discover → Continents</span> to add Africa, Europe, Asia… as <b className="text-slate-200">editable polygons</b>. Also try the <span className="text-slate-200">Borders</span> panel for any country.</div>
             </div>
           </div>
           <div className="flex gap-3">
@@ -110,7 +110,7 @@ export function WelcomeModal() {
             <button onClick={() => dismiss(true)} className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm active:scale-[0.98] transition">
               Continue without signing in
             </button>
-            <p className="text-[11px] text-center text-slate-500">Sharing works offline via link — no cloud needed.</p>
+            <p className="text-[11px] text-center text-slate-500">No storage — everything is loaded fresh. Export to GeoJSON / SVG / PNG.</p>
           </div>
         </div>
       </div>

@@ -14,21 +14,23 @@ export function SettingsDrawer() {
         </button>
       </div>
 
-      {/* 0. SHARING — no cloud needed */}
-      <div className="p-3.5 rounded-2xl border bg-sky-950/20 border-sky-700/30 space-y-2.5 mb-4">
+      {/* 0. STORAGE DELETED + CONTINENTS */}
+      <div className="p-3.5 rounded-2xl border bg-slate-800/80 border-slate-700/50 space-y-2.5 mb-4">
         <div className="flex items-center gap-2">
-          <span className="w-7 h-7 grid place-items-center rounded-xl bg-sky-500/15 text-sky-400 border border-sky-500/20"><Icon name="share" className="w-4 h-4" /></span>
-          <span className="text-xs font-bold text-sky-200">Sharing</span>
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-sky-500 text-white font-black">LINK</span>
+          <span className="w-7 h-7 grid place-items-center rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/20"><Icon name="trash-2" className="w-4 h-4" /></span>
+          <span className="text-xs font-bold text-slate-200">Storage deleted</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-300 font-black">OFF</span>
+          <span className="w-7 h-7 grid place-items-center rounded-xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 ml-auto"><Icon name="globe-2" className="w-4 h-4" /></span>
+          <span className="text-xs font-bold text-cyan-200">Continents</span>
         </div>
         <p className="text-[11px] text-slate-400 leading-relaxed">
-          Publish creates a <b className="text-sky-300">shareable link</b> (`#share=…` in URL). Anyone with the link can <b className="text-slate-200">Load</b> it — no cloud, no sign-in required. Your maps stay in this browser (`localStorage`, 1 MB quota).
+          No saving — <b className="text-slate-200">Draw, Load, Export</b> only. Use <b className="text-cyan-300">Discover → Continents</b> to load Africa, Europe, Asia, N/S America, Oceania, Antarctica as editable shapes.
         </p>
         <div className="flex gap-2">
           <button onClick={() => { actions.closeDrawers(); setTimeout(()=> { try{ window.dispatchEvent(new CustomEvent('show-welcome', { detail:{force:true}})); }catch{} }, 300); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium">
             Show welcome again
           </button>
-          <button onClick={() => { actions.toggleDrawer('creations-drawer'); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-sky-600 hover:bg-sky-500 text-white font-bold">
+          <button onClick={() => { actions.toggleDrawer('creations-drawer'); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold">
             Open Discover
           </button>
         </div>

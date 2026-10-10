@@ -2,6 +2,17 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.2.2] — 2026-10-07 — Delete storage, fix Load, add continents
+
+### Removed
+- **Storage** — deleted `localStorage` (`cloud_maps`), quota meter, `My Maps`, `Publish`/`Upload` persistence and `Share via link` (`#share=…`). No saving — draw, load presets, export.
+
+### Added
+- **Load continents** — `src/lib/share.js` now ships 7 continents (Africa, Europe, Asia, North America, South America, Oceania, Antarctica) as editable `FeatureCollections` with unique colors. Discover shows a 2×4 grid.
+
+### Fixed
+- **Load button not clickable** — `CreationsDrawer` now uses `type="button"`, `pointer-events:auto`, `touch-action:manipulation`, waits up to 2 s for `S.map && S.drawnItems` before loading, and handles both `click` and `touch`. CSS `.sheet-drawer:not(.open){pointer-events:none}` fixes hidden drawer intercepting clicks. `L.geoJSON` style handles `fillColor` correctly.
+
 ## [1.2.1] — 2026-10-07 — Share via link (cloud deleted)
 
 ### Added

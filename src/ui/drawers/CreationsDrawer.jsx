@@ -1,9 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../lib/icons';
 import actions from '../../engine/actions';
-import { getUser, subscribeAuth } from '../../lib/auth';
-import { listDiscover, listMyMaps, getMap, publishMap, deleteMap, getUsage, formatBytes, quotaPercent, createShareUrl, consumeShareHash } from '../../lib/share';
-import { liveGeoJSONString } from '../../engine/quickTools';
+import { DEMO_MAPS, CONTINENTS, listDiscover, getMap } from '../../lib/share';
 import { S } from '../../engine/state';
 import L from 'leaflet';
 import { showToast } from '../../engine/uiHelpers';
@@ -13,81 +11,51 @@ import { populateStyleDrawer } from '../../engine/styleInspector';
 import { updateStats } from '../../engine/quickTools';
 
 export function CreationsDrawer() {
-  const [tab, setTab] = useState('discover'); // discover | my
-  const [discover, setDiscover] = useState([]);
-  const [myMaps, setMyMaps] = useState([]);
-  const [usage, setUsage] = useState({ usage: 0, quota: 1048576 });
-  const [user, setUser] = useState(getUser());
+  const [discover, setDiscover] = useState([...DEMO_MAPS, ...CONTINENTS]);
   const [loading, setLoading] = useState(false);
-  const fileRef = useRef(null);
-
-  useEffect(() => {
-    const unsub = subscribeAuth(setUser);
-    setUser(getUser());
-    return () => { unsub(); };
-  }, []);
 
   const refresh = async () => {
     setLoading(true);
     try {
-      const [d, m, u] = await Promise.all([
-        listDiscover(20).catch(()=>[]),
-        listMyMaps().catch(()=>[]),
-        getUsage().catch(()=>({usage:0, quota:1048576})),
-      ]);
-      setDiscover(d||[]);
-      setMyMaps(m||[]);
-      setUsage(u||{usage:0, quota:1048576});
+      const d = await listDiscover(20).catch(()=> [...DEMO_MAPS, ...CONTINENTS]);
+      setDiscover(d||[...DEMO_MAPS, ...CONTINENTS]);
     } finally { setLoading(false); }
   };
 
-  // refresh when drawer opens or user changes — skip network in tests to avoid act warnings
   const isTest = import.meta.env.MODE === 'test';
   useEffect(() => {
     if (isTest) return;
+    refresh();
     const el = document.getElementById('creations-drawer');
-    if (!el) {
-      refresh();
-      return;
-    }
+    if (!el) return;
     const obs = new MutationObserver(() => {
       if (el.classList.contains('open')) refresh();
     });
     obs.observe(el, { attributes: true, attributeFilter: ['class'] });
     if (el.classList.contains('open')) refresh();
-    refresh();
     const onRefresh = () => refresh();
     el.addEventListener('refresh', onRefresh);
     return () => { obs.disconnect(); el.removeEventListener('refresh', onRefresh); };
-  }, [user]);
+  }, []);
 
-  useEffect(() => { if (!isTest) refresh(); }, [user]);
-
-  const ensureUserOrDemo = () => {
-    let u = getUser();
-    if (u) return u;
-    try {
-      u = JSON.parse(localStorage.getItem('auth_user')||'null');
-      if (u) return u;
-    } catch {}
-    const demo = { id: 'local_demo', provider: 'local', name: 'Local User', email: '', avatar: '', createdAt: Date.now() };
-    try { localStorage.setItem('auth_user', JSON.stringify(demo)); } catch {}
-    try { window.dispatchEvent(new Event('focus')); } catch {}
-    setUser(demo);
-    return demo;
-  };
-
+  // Robust load — waits for map if needed, never silently fails to be clickable
   const handleLoad = async (map) => {
     try {
+      // Wait up to 2s for engine to be ready (fixes "not clickable" when clicked too early)
+      for (let i = 0; i < 20; i++) {
+        if (S.map && S.drawnItems) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
       if (!S.map || !S.drawnItems) {
-        showToast('Map not ready yet — try again in a second');
+        showToast('Map not ready yet — wait a second and try again');
         return;
       }
       let full = map;
+      // if passed an id or missing geojson, fetch it
       if (!map.geojson) {
         try {
-          full = await getMap(map.id);
-          full = full.map || full;
+          const fetched = await getMap(map.id);
+          full = fetched.map || fetched;
         } catch (e) {
           showToast('Could not fetch map — try again');
           return;
@@ -95,21 +63,25 @@ export function CreationsDrawer() {
       }
       const gj = full.geojson || full;
       if (!gj || (!gj.type && !gj.features)) {
-        showToast('This map has no GeoJSON');
+        showToast('This item has no GeoJSON');
         return;
       }
       let added = 0;
+      // Use a fresh unique color per load so continents stay distinct from existing shapes
       const geoLayer = L.geoJSON(gj, {
         style: f => {
           const p = f?.properties||{};
-          const c = p.fill || '#10b981';
+          // Keep author color for continents/demos, fallback to fill
+          const c = p.fill || full.color || '#10b981';
           const isLine = f?.geometry?.type?.includes('Line');
           return isLine ? { color: p.stroke||c, weight: p['stroke-width']||3, opacity:1, fillOpacity:0 } : { color: c, fillColor: c, fillOpacity: 1, weight: 0 };
         },
         onEachFeature: (f, layer) => {
           try { setupLayerProperties(layer); } catch {}
-          if (f?.properties) layer.feature = layer.feature || { type:'Feature', properties:{} };
-          if (f?.properties) layer.feature.properties = { ...(f.properties), name: full.title || f.properties.name };
+          if (f?.properties) {
+            layer.feature = layer.feature || { type:'Feature', properties:{} };
+            layer.feature.properties = { ...(f.properties), name: full.title || f.properties.name || 'Region' };
+          }
           layer.on('click', () => {
             S.activeSelectedLayer = layer;
             try { populateStyleDrawer(layer); } catch {}
@@ -135,7 +107,7 @@ export function CreationsDrawer() {
       setTimeout(()=> {
         try {
           const b = S.drawnItems.getBounds();
-          if (b.isValid()) S.map.fitBounds(b, { padding:[30,30], maxZoom: 14 });
+          if (b.isValid()) S.map.fitBounds(b, { padding:[30,30], maxZoom: 4 });
         } catch {}
       }, 120);
     } catch (e) {
@@ -144,172 +116,89 @@ export function CreationsDrawer() {
     }
   };
 
-  const handlePublishCurrent = async () => {
-    const u = ensureUserOrDemo();
-    if (!S.drawnItems || S.drawnItems.getLayers().length===0) { showToast('Draw something first — use Polygon tool'); return; }
-    const def = `My map ${new Date().toLocaleDateString()}`;
-    const title = prompt('Creation title:', def);
-    if (title===null) return;
-    const finalTitle = (title||'').trim() || def;
-    try {
-      const gj = JSON.parse(liveGeoJSONString(false));
-      if (!gj.features || gj.features.length===0) { showToast('Draw something first'); return; }
-      let preview = null;
-      try {
-        const canvas = document.querySelector('#map canvas');
-        if (canvas) preview = canvas.toDataURL('image/png');
-      } catch {}
-      const created = await publishMap({ title: finalTitle, geojson: gj, isPublic: true, preview });
-      const shareUrl = createShareUrl({ title: finalTitle, geojson: gj, preview });
-      try { await navigator.clipboard.writeText(shareUrl); showToast(`Published “${created.title||finalTitle}” — link copied`); } catch { showToast(`Published “${created.title||finalTitle}” — share: ${shareUrl.slice(0,60)}…`); }
-      // also show share url in prompt for easy copy on mobile
-      try { if (!navigator.clipboard || !window.isSecureContext) prompt('Share this link:', shareUrl); } catch {}
-      refresh();
-      setTab('my');
-    } catch (e) {
-      if (e.data?.error==='QUOTA_EXCEEDED' || e.message==='QUOTA_EXCEEDED') {
-        showToast(`Quota exceeded: ${formatBytes(usage.usage)} / ${formatBytes(usage.quota)} — delete a map first`);
-      } else showToast('Publish failed: '+(e.message||'error'));
-    }
-  };
+  // Dedicated continent loader with same robust path — continents are FeatureCollections with 1-2 polys
+  const handleLoadContinent = (continent) => handleLoad(continent);
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    ensureUserOrDemo();
-    if (file.size > 1048576) { showToast('File too large — 1 MB quota'); e.target.value=''; return; }
-    try {
-      const text = await file.text();
-      const gj = JSON.parse(text);
-      if (!gj.type) throw new Error('Not a GeoJSON');
-      const title = file.name.replace(/\.geojson$/i,'').replace(/\.json$/i,'') || 'Uploaded';
-      let preview = null;
-      try { const canvas = document.querySelector('#map canvas'); if (canvas) preview = canvas.toDataURL('image/png'); } catch {}
-      const created = await publishMap({ title, geojson: gj, isPublic: true, preview });
-      const shareUrl = createShareUrl({ title, geojson: gj, preview });
-      try { await navigator.clipboard.writeText(shareUrl); showToast(`Uploaded “${created.title||title}” — link copied`);} catch { showToast(`Uploaded “${created.title||title}”`); }
-      refresh();
-      setTab('my');
-    } catch (err) {
-      if (err.data?.error==='QUOTA_EXCEEDED' || err.message==='QUOTA_EXCEEDED') showToast('Quota exceeded — 1 MB');
-      else showToast('Upload failed: '+(err.message||'invalid GeoJSON'));
-    } finally { e.target.value=''; }
-  };
-
-  const handleShare = async (m) => {
-    try {
-      let gj = m.geojson;
-      if (!gj) { const full = await getMap(m.id); gj = (full.geojson||full); }
-      const title = m.title||'Shared map';
-      const preview = m.preview||null;
-      const url = createShareUrl({ title, geojson: gj, preview });
-      await navigator.clipboard.writeText(url);
-      showToast('Link copied — share it');
-      try { if (navigator.share) await navigator.share({ title, url }); } catch {}
-    } catch { showToast('Could not share'); }
-  };
-
-  // handle #share=... on load — show banner and refresh
-  useEffect(() => {
-    const shared = consumeShareHash();
-    if (shared) {
-      showToast(`Shared map “${shared.title}” — open Discover to Load`);
-      refresh();
-    }
-  }, []);
-
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this map?')) return;
-    try {
-      await deleteMap(id);
-      showToast('Deleted');
-      refresh();
-    } catch (e) { showToast('Delete failed'); }
-  };
-
-  const pct = quotaPercent(usage.usage);
-  const isOver = usage.usage >= usage.quota;
+  const continents = discover.filter(m=>m.kind==='continent');
+  const demos = discover.filter(m=>m.kind==='demo');
 
   return (
-    <div id="creations-drawer" className="sheet-drawer fixed bottom-0 left-0 right-0 lg:left-auto lg:right-4 lg:bottom-4 lg:top-20 lg:w-[420px] z-40 bg-slate-900/98 backdrop-blur-xl border border-slate-700/80 rounded-t-3xl lg:rounded-3xl p-5 max-h-[85vh] lg:max-h-none lg:h-auto overflow-y-auto flex flex-col">
-      <div className="flex justify-between items-center mb-3">
+    <div id="creations-drawer" className="sheet-drawer fixed bottom-0 left-0 right-0 lg:left-auto lg:right-4 lg:bottom-4 lg:top-20 lg:w-[420px] z-40 bg-slate-900/98 backdrop-blur-xl border border-slate-700/80 rounded-t-3xl lg:rounded-3xl p-5 max-h-[85vh] lg:max-h-none lg:h-auto overflow-y-auto flex flex-col pointer-events-auto">
+      <div className="flex justify-between items-center mb-3 shrink-0">
         <h3 className="text-sm font-bold tracking-wide uppercase text-slate-200 flex items-center gap-2">
           <Icon name="compass" className="w-4 h-4 text-amber-400" /> Discover
-          <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-mono">{discover.length + myMaps.length}</span>
+          <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-mono">{discover.length}</span>
         </h3>
-        <button onClick={() => actions.closeDrawers()} className="text-slate-400 hover:text-white p-1">
+        <button type="button" onClick={() => actions.closeDrawers()} className="text-slate-400 hover:text-white p-1 cursor-pointer touch-manipulation">
           <Icon name="x" className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="mb-3 bg-slate-800/80 rounded-2xl border border-slate-700/40 p-3">
-        <div className="flex justify-between items-center mb-1.5">
-          <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5"><Icon name="hard-drive" className="w-3.5 h-3.5 text-emerald-400"/> Local storage</span>
-          <span className={`text-[11px] font-mono ${isOver?'text-red-400':'text-slate-400'}`}>{formatBytes(usage.usage)} / {formatBytes(usage.quota)}</span>
-        </div>
-        <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-          <div className={`h-full ${pct>90?'bg-red-500': pct>70?'bg-amber-500':'bg-emerald-500'} transition-all`} style={{width:`${pct}%`}} />
-        </div>
-        <p className="text-[11px] text-slate-500 mt-1.5">Share via link — anyone with the link can Load it. No cloud needed.</p>
-      </div>
-
-      <div className="flex bg-slate-800 rounded-xl p-1 mb-3">
-        <button onClick={()=>setTab('discover')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${tab==='discover'?'bg-slate-700 text-white':'text-slate-400'}`}>Discover</button>
-        <button onClick={()=>setTab('my')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${tab==='my'?'bg-slate-700 text-white':'text-slate-400'}`}>My Maps</button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <button onClick={handlePublishCurrent} className="py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-1.5">
-          <Icon name="map" className="w-4 h-4"/> Publish current
-        </button>
-        <button onClick={()=>fileRef.current?.click()} className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5">
-          <Icon name="upload" className="w-4 h-4"/> Upload .geojson
-        </button>
-        <input ref={fileRef} type="file" accept=".geojson,.json,application/geo+json,application/json" className="hidden" onChange={handleFileUpload} />
-      </div>
+      <p className="text-[11px] text-slate-500 mb-3 shrink-0">Tap <b className="text-slate-300">Load</b> to add to map — works offline, no storage.</p>
 
       {loading && <div className="text-center text-xs text-slate-500 py-4">Loading…</div>}
 
-      {!loading && tab==='discover' && (
-        <div className="grid grid-cols-1 gap-3 flex-1 overflow-y-auto">
-          {discover.length===0 && <div className="text-[11px] text-slate-500 text-center py-6">No public maps yet — be the first to publish!</div>}
-          {discover.map(m=>(
-            <div key={m.id} className="bg-slate-800/80 rounded-2xl border border-slate-700/60 overflow-hidden">
-              <div className="h-32 bg-slate-800 grid place-items-center overflow-hidden">
-                {m.preview ? <img src={m.preview} className="w-full h-full object-cover" alt="preview"/> : <div className="h-full w-full bg-gradient-to-br from-emerald-900/40 via-sky-900/30 to-amber-900/30 grid place-items-center"><Icon name="map" className="w-8 h-8 text-emerald-400/70"/></div>}
-              </div>
-              <div className="p-3.5">
-                <div className="text-xs font-bold text-white truncate">{m.title}</div>
-                <div className="text-[11px] text-slate-400 flex items-center gap-1.5"> {m.author?.avatar ? <img src={m.author.avatar} className="w-4 h-4 rounded-full" alt="avatar"/> : null} by {m.author?.name||'unknown'} · {formatBytes(m.bytes||0)}</div>
-                <div className="flex gap-2 mt-2">
-                  <button onClick={()=>handleLoad(m)} className="flex-1 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold text-white">Load</button>
-                  <button onClick={()=>handleShare(m)} className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white flex items-center gap-1"><Icon name="share" className="w-3.5 h-3.5"/> Share</button>
+      {!loading && (
+        <div className="flex-1 flex flex-col gap-4 min-h-0">
+          {/* CONTINENTS */}
+          <div>
+            <h4 className="text-[11px] font-black tracking-widest uppercase text-slate-400 flex items-center gap-2 mb-2">
+              <Icon name="globe-2" className="w-3.5 h-3.5 text-cyan-400" /> Continents
+              <span className="text-[10px] font-mono text-slate-500 normal-case tracking-normal">7 regions</span>
+            </h4>
+            <div className="grid grid-cols-2 gap-2">
+              {continents.map(m=>(
+                <div key={m.id} className="bg-slate-800/90 rounded-2xl border border-slate-700/60 overflow-hidden flex flex-col">
+                  <div className="h-20 grid place-items-center overflow-hidden relative" style={{background: `linear-gradient(135deg, ${m.color}18, #0f172a)`}}>
+                    <div className="absolute inset-0 opacity-20" style={{background: `radial-gradient(60% 60% at 50% 35%, ${m.color}, transparent)`}}/>
+                    <Icon name={m.title==='Oceania' ? 'waves' : m.title==='Antarctica' ? 'snowflake' : 'globe-2'} className="w-7 h-7 relative z-10" style={{color: m.color}}/>
+                  </div>
+                  <div className="p-3 flex-1 flex flex-col gap-2">
+                    <div className="text-xs font-bold text-white truncate">{m.title}</div>
+                    <button
+                      type="button"
+                      onClick={()=>handleLoadContinent(m)}
+                      onTouchEnd={(e)=>{ e.preventDefault(); handleLoadContinent(m); }}
+                      className="w-full py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-xs font-bold text-white cursor-pointer touch-manipulation select-none relative z-10 pointer-events-auto"
+                      style={{pointerEvents:'auto'}}
+                    >Load</button>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+            <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">Each loads as an <b className="text-slate-300">editable polygon</b> — recolor, split, merge, or cut to real coastline.</p>
+          </div>
 
-      {!loading && tab==='my' && (
-        <div className="grid grid-cols-1 gap-3 flex-1 overflow-y-auto">
-          {myMaps.length===0 && <div className="text-[11px] text-slate-500 text-center py-6">No maps yet — draw something and <b>Publish current</b> or <b>Upload .geojson</b>.</div>}
-          {myMaps.map(m=>(
-            <div key={m.id} className="bg-slate-800/80 rounded-2xl border border-slate-700/60 overflow-hidden">
-              <div className="h-28 bg-slate-800 grid place-items-center overflow-hidden">
-                {m.preview ? <img src={m.preview} className="w-full h-full object-cover" alt="preview"/> : <Icon name="map" className="w-8 h-8 text-emerald-400/70"/>}
-              </div>
-              <div className="p-3.5">
-                <div className="text-xs font-bold text-white truncate">{m.title}</div>
-                <div className="text-[11px] text-slate-400">{m.createdAt? new Date(m.createdAt).toLocaleDateString():''} · {formatBytes(m.bytes||0)} · {m.isPublic?'Public':'Private'}</div>
-                <div className="flex gap-2 mt-2">
-                  <button onClick={()=>handleLoad(m)} className="flex-1 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold text-white">Load</button>
-                  <button onClick={()=>handleShare(m)} className="px-2.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white"><Icon name="share" className="w-3.5 h-3.5"/></button>
-                  <button onClick={()=>handleDelete(m.id)} className="px-2.5 py-2 rounded-xl bg-red-900/50 hover:bg-red-800 text-xs font-bold text-red-300"><Icon name="trash-2" className="w-3.5 h-3.5"/></button>
+          {/* DEMOS */}
+          <div>
+            <h4 className="text-[11px] font-black tracking-widest uppercase text-slate-400 flex items-center gap-2 mb-2">
+              <Icon name="map" className="w-3.5 h-3.5 text-emerald-400" /> Featured
+            </h4>
+            <div className="grid grid-cols-1 gap-3">
+              {demos.map(m=>(
+                <div key={m.id} className="bg-slate-800/80 rounded-2xl border border-slate-700/60 overflow-hidden">
+                  <div className="h-28 bg-slate-800 grid place-items-center overflow-hidden relative">
+                    <div className="h-full w-full bg-gradient-to-br from-emerald-900/40 via-sky-900/30 to-amber-900/30 grid place-items-center"><Icon name="map" className="w-8 h-8 text-emerald-400/70"/></div>
+                  </div>
+                  <div className="p-3.5">
+                    <div className="text-xs font-bold text-white truncate">{m.title}</div>
+                    <div className="text-[11px] text-slate-400">by {m.author?.name||'demo'} · editable</div>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={()=>handleLoad(m)}
+                        onTouchEnd={(e)=>{ e.preventDefault(); handleLoad(m); }}
+                        className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-xs font-bold text-white cursor-pointer touch-manipulation select-none relative z-10 pointer-events-auto"
+                        style={{pointerEvents:'auto'}}
+                      >Load</button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
+          </div>
+
+          <div className="text-[10px] text-slate-500 text-center py-2 border-t border-slate-800 mt-2">Storage deleted — nothing is saved. Draw, export, reload.</div>
         </div>
       )}
     </div>

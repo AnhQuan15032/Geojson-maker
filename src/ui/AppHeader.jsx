@@ -102,21 +102,21 @@ export function AppHeader() {
             </b>
           </span>
         </button>
-        {/* Community Creations Explorer */}
-        <button onClick={() => { actions.toggleDrawer('creations-drawer') }} id="btn-creations-header" title="Explore Community Creations" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
+        {/* Discover — demos + continents (no storage) */}
+        <button onClick={() => { actions.toggleDrawer('creations-drawer') }} id="btn-creations-header" title="Discover — Load demos & continents" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
           <Icon name="compass" className="w-3.5 h-3.5 text-amber-400" />
           <span>
-            Community
+            Discover
           </span>
           <span id="badge-creations-count-header" className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold">
-            2
+            9
           </span>
         </button>
-        {/* Upload Creation */}
-        <button onClick={() => { openUploadCreationModal() }} id="btn-upload-header" title="Upload and publish creation with preview" className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3 py-1.5 rounded-full shadow-lg shadow-emerald-900/40 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition">
-          <Icon name="cloud-upload" className="w-3.5 h-3.5" />
+        {/* Load GeoJSON (no storage) */}
+        <button onClick={() => { actions.importGeoJSONFile(); }} id="btn-upload-header" title="Load a GeoJSON file from your device" className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3 py-1.5 rounded-full shadow-lg shadow-emerald-900/40 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition">
+          <Icon name="file-up" className="w-3.5 h-3.5" />
           <span>
-            Upload
+            Load file
           </span>
         </button>
         {/* User Auth (Discord only) */}

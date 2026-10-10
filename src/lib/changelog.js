@@ -1,5 +1,25 @@
 export const CHANGELOG = [
   {
+    version: '1.2.2',
+    date: '2026-10-07',
+    title: 'Delete storage, fix Load, add continents',
+    changes: [
+      'Deleted storage — no localStorage, no quota, no My Maps, no Share links',
+      'Fixed Load button not clickable — now pointer-events auto, waits for map, both click and touch',
+      'Added Load continents — Africa, Europe, Asia, N/S America, Oceania, Antarctica as editable shapes',
+      'Discover now shows Continents (7) + Featured demos (2) = 9 presets, no cloud',
+    ],
+  },
+  {
+    version: '1.2.1',
+    date: '2026-10-07',
+    title: 'Share via link (cloud deleted)',
+    changes: [
+      'Share via link — #share=... URL for any map, no KV needed',
+      'Local-only storage 1 MB quota (replaced by delete in 1.2.2)',
+    ],
+  },
+  {
     version: '1.2.0',
     date: '2026-10-07',
     title: 'Cloud + Auth + Discover',

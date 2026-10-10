@@ -35,9 +35,11 @@ html, body {
     .sheet-drawer {
       transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
       transform: translateY(100%);
+      pointer-events: none;
     }
     .sheet-drawer.open {
       transform: translateY(0%);
+      pointer-events: auto;
     }
     .leaflet-pm-toolbar {
       display: none !important;
@@ -642,7 +644,21 @@ html, body {
       }
       .sheet-drawer.open {
         transform: translateX(0);
+        pointer-events: auto;
+      }
+      .sheet-drawer:not(.open) {
+        pointer-events: none;
       }
       /* Give desktop panels room to breathe */
       #map { width: 100vw; }
+    }
+
+    /* Fix: ensure Load buttons inside Discover are always clickable — even during transitions or on touch */
+    #creations-drawer button {
+      pointer-events: auto !important;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #creations-drawer .sheet-drawer.open {
+      pointer-events: auto;
     }
