@@ -38,6 +38,8 @@ const initialState = {
   nudgeUnit: 'percent',
   nudgeKeysEnabled: true,
   splitModeActive: false,
+  splitDeleteMode: false,
+  _splitLockedLayer: null,
   countryLayers: [],
   countryLayerById: {},
   countriesIndexCache: {},

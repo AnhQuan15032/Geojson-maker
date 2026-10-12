@@ -164,7 +164,8 @@ export function toggleMergeCandidate(layer) {
 // Core union: fold a list of layers into one feature
 export async function unionLayers(layers, statusPrefix) {
   await ensureHeavyLibs();
-  if (!window.turf) throw new Error('Turf geometry engine unavailable');
+  const _turfCheck = turf || (typeof window !== 'undefined' ? window.turf : null);
+  if (!_turfCheck) throw new Error('Turf geometry engine unavailable');
   let acc = layers[0].toGeoJSON();
   for (let i = 1; i < layers.length; i++) {
     try {
@@ -236,6 +237,7 @@ export function commitMergedFeature(layers, merged, name) {
     });
   }
   layer.on('click', () => {
+    if (S.splitModeActive) return;
     S.activeSelectedLayer = layer;
     populateStyleDrawer(layer);
     onFeatureClick(layer);
@@ -285,7 +287,8 @@ export async function executeMerge() {
 // Auto-merge every group of overlapping / touching polygons
 export async function mergeAllTouching() {
   await ensureHeavyLibs();
-  if (!window.turf) {
+  const _turfAvail = turf || (typeof window !== 'undefined' ? window.turf : null);
+  if (!_turfAvail) {
     showToast('Turf unavailable');
     return;
   }
@@ -711,6 +714,7 @@ export function healLayerGeometryIfCorrupted(layer) {
   S.drawnItems.addLayer(newLayer);
   if (S.activeSelectedLayer === layer) S.activeSelectedLayer = newLayer;
   newLayer.on('click', () => {
+    if (S.splitModeActive) return;
     S.activeSelectedLayer = newLayer;
     populateStyleDrawer(newLayer);
     onFeatureClick(newLayer);
@@ -986,6 +990,7 @@ export async function cutSeaFromPolygon(targetLayer) {
   S.drawnItems.addLayer(newLayer);
   S.activeSelectedLayer = newLayer;
   newLayer.on('click', () => {
+    if (S.splitModeActive) return;
     S.activeSelectedLayer = newLayer;
     populateStyleDrawer(newLayer);
     onFeatureClick(newLayer);

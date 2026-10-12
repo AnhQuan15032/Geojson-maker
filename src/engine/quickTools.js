@@ -49,6 +49,7 @@ export function duplicateSelectedShape() {
     stroke: c
   };
   layer.on('click', () => {
+    if (S.splitModeActive) return;
     S.activeSelectedLayer = layer;
     populateStyleDrawer(layer);
     onFeatureClick(layer);

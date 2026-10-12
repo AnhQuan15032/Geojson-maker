@@ -23,15 +23,37 @@ export function setSplitStatus(txt, tone) {
   const el = document.getElementById('split-status');
   if (!el) return;
   el.textContent = txt;
-  el.className = tone === 'ok' ? 'text-[10px] font-mono text-emerald-400' : tone === 'busy' ? 'text-[10px] font-mono text-amber-300' : 'text-[10px] font-mono text-slate-400';
+  el.className = tone === 'ok' ? 'text-[10px] font-mono text-emerald-400' : tone === 'busy' ? 'text-[10px] font-mono text-amber-300' : tone === 'warn' ? 'text-[10px] font-mono text-amber-300' : 'text-[10px] font-mono text-slate-400';
+  const el2 = document.getElementById('split-delete-status');
+  if (el2) {
+    el2.textContent = tone === 'busy' && S.splitDeleteMode ? 'deleting…' : txt;
+    el2.className = el.className;
+  }
 }
 
-export function startSplitMode() {
+function ensureSelectedPolygonOrWarn() {
+  if (!S.activeSelectedLayer || !(S.activeSelectedLayer instanceof L.Polygon) || !S.drawnItems.hasLayer(S.activeSelectedLayer)) {
+    showToast('Select a polygon first — tap it on the map');
+    setSplitStatus('select a shape', 'warn');
+    // highlight selection UI to guide user
+    const drawerBtn = document.getElementById('btn-split');
+    if (drawerBtn) {
+      drawerBtn.classList.add('animate-pulse');
+      setTimeout(()=> drawerBtn.classList.remove('animate-pulse'), 900);
+    }
+    return false;
+  }
+  return true;
+}
+
+function startSplitDraw(opts) {
   closeDrawers();
   exitCurveEdgeMode();
-  S.map.pm.disableGlobalEditMode();
+  if (S.map.pm && S.map.pm.disableGlobalEditMode) S.map.pm.disableGlobalEditMode();
   S.splitModeActive = true;
+  S._splitLockedLayer = S.activeSelectedLayer;
   setSplitStatus('drawing…', 'busy');
+  if (S.map) S.map.getContainer().style.cursor = 'crosshair';
   S.map.pm.enableDraw('Line', {
     finishOn: 'dblclick',
     snappable: S.snappingEnabled,
@@ -40,23 +62,45 @@ export function startSplitMode() {
     snapVertex: S.snappingEnabled && S.snapToVertices,
     snapMiddle: S.snappingEnabled && S.snapToMidpoints,
     templineStyle: {
-      color: '#f43f5e',
+      color: opts.color || '#f43f5e',
       weight: 3,
       dashArray: '6,4'
     },
     hintlineStyle: {
-      color: '#f43f5e',
+      color: opts.color || '#f43f5e',
       dashArray: '1,6',
       weight: 2
     }
   });
-  showToast('Draw a line or polyline across the shape — finish with a double-click / double-tap');
+  showToast(opts.toast);
+}
+
+export function startSplitMode() {
+  if (!ensureSelectedPolygonOrWarn()) return;
+  S.splitDeleteMode = false;
+  startSplitDraw({
+    color: '#f43f5e',
+    toast: 'Draw a line across the selected shape — double-click to finish'
+  });
+}
+
+export function startSplitAndDeleteMode() {
+  if (!ensureSelectedPolygonOrWarn()) return;
+  S.splitDeleteMode = true;
+  startSplitDraw({
+    color: '#fb7185',
+    toast: 'Split & delete: draw line — the smaller half will be deleted'
+  });
+  setSplitStatus('drawing (delete)…', 'busy');
 }
 
 export function cancelSplitMode() {
   S.splitModeActive = false;
+  S.splitDeleteMode = false;
+  S._splitLockedLayer = null;
   setSplitStatus('idle');
-  if (S.map.pm.globalDrawModeEnabled && S.map.pm.globalDrawModeEnabled()) S.map.pm.disableDraw();
+  if (S.map && S.map.pm.globalDrawModeEnabled && S.map.pm.globalDrawModeEnabled()) S.map.pm.disableDraw();
+  if (S.map) S.map.getContainer().style.cursor = '';
   showToast('Split mode stopped');
 }
 
@@ -89,6 +133,7 @@ export function addSplitPiece(geometryShape, name, color, baseProps) {
     });
   }
   layer.on('click', () => {
+    if (S.splitModeActive) return;
     S.activeSelectedLayer = layer;
     populateStyleDrawer(layer);
     onFeatureClick(layer);
@@ -128,10 +173,12 @@ export function nearestPathSide(lng, lat, path, cosLat) {
   return sign;
 }
 
-export async function executeSplitWithLine(latlngs) {
+export async function executeSplitWithLine(latlngs, forceDeleteFlag) {
+  const isDeleteMode = typeof forceDeleteFlag === 'boolean' ? forceDeleteFlag : !!S.splitDeleteMode;
   try {
     await ensureHeavyLibs();
-    if (!window.turf) throw new Error('Turf geometry engine unavailable (offline)');
+    const _turf = turf || (typeof window !== 'undefined' ? window.turf : null);
+    if (!_turf) throw new Error('Turf geometry engine unavailable (offline)');
     const flat = Array.isArray(latlngs[0]) ? latlngs.flat(3) : latlngs;
     const coords = flat.map(ll => [ll.lng, ll.lat]);
     if (coords.length < 2) {
@@ -139,22 +186,24 @@ export async function executeSplitWithLine(latlngs) {
       showToast('Draw a line across the shape to split it');
       return;
     }
-    const selectedOnly = document.getElementById('split-selected-only').checked;
+    // Enforce: only the pre-selected region may be split — no switching during draw
     let targets;
-    if (selectedOnly) {
+    const locked = S._splitLockedLayer && S.drawnItems.hasLayer(S._splitLockedLayer) ? S._splitLockedLayer : S.activeSelectedLayer;
+    if (!locked || !(locked instanceof L.Polygon) || !S.drawnItems.hasLayer(locked)) {
+      // No valid locked selection — check activeSelectedLayer
       if (!S.activeSelectedLayer || !(S.activeSelectedLayer instanceof L.Polygon)) {
         setSplitStatus('idle');
-        showToast('Select a polygon first, or uncheck "selected shape only"');
+        showToast('Select a polygon first before splitting');
         return;
       }
       targets = [S.activeSelectedLayer];
     } else {
-      targets = S.drawnItems.getLayers().filter(l => l instanceof L.Polygon);
+      targets = [locked];
     }
 
     // ---- Cut with the FULL drawn path (line OR bent polyline) ----
     const drawnPath = coords;
-    const pathBbox = turf.bbox(turf.lineString(drawnPath));
+    const pathBbox = _turf.bbox(_turf.lineString(drawnPath));
     const cosLat = Math.cos(S.map.getCenter().lat * Math.PI / 180);
     let splitCount = 0;
     let lastPiece = null;
@@ -162,7 +211,7 @@ export async function executeSplitWithLine(latlngs) {
     for (let t = 0; t < targets.length; t++) {
       const poly = targets[t];
       const polyGeo = poly.toGeoJSON();
-      const pb = turf.bbox(polyGeo);
+      const pb = _turf.bbox(polyGeo);
 
       // bbox prefilter — skip shapes the path cannot reach
       if (pathBbox[0] > pb[2] || pathBbox[2] < pb[0] || pathBbox[1] > pb[3] || pathBbox[3] < pb[1]) continue;
@@ -175,13 +224,13 @@ export async function executeSplitWithLine(latlngs) {
       const fullPath = [[drawnPath[0][0] - d0[0] * ext, drawnPath[0][1] - d0[1] * ext], ...drawnPath, [drawnPath[drawnPath.length - 1][0] + dN[0] * ext, drawnPath[drawnPath.length - 1][1] + dN[1] * ext]];
 
       // A hair-thin band following the whole path severs the polygon
-      const diagKm = turf.distance(turf.point([pb[0], pb[1]]), turf.point([pb[2], pb[3]]), {
+      const diagKm = _turf.distance(_turf.point([pb[0], pb[1]]), _turf.point([pb[2], pb[3]]), {
         units: 'kilometers'
       });
       const wKm = Math.min(Math.max(diagKm * 2e-6, 5e-8), 0.05);
       let band = null;
       try {
-        band = turf.buffer(turf.lineString(fullPath), wKm, {
+        band = _turf.buffer(_turf.lineString(fullPath), wKm, {
           units: 'kilometers',
           steps: 4
         });
@@ -189,29 +238,29 @@ export async function executeSplitWithLine(latlngs) {
       if (!band) continue;
       let cut = null;
       try {
-        cut = turf.difference(polyGeo, band);
+        cut = _turf.difference(polyGeo, band);
       } catch (e) {}
       if (!cut || !cut.geometry) continue;
       let pieces = [];
-      if (cut.geometry.type === 'Polygon') pieces = [cut];else if (cut.geometry.type === 'MultiPolygon') pieces = cut.geometry.coordinates.map(c => turf.polygon(c));
+      if (cut.geometry.type === 'Polygon') pieces = [cut];else if (cut.geometry.type === 'MultiPolygon') pieces = cut.geometry.coordinates.map(c => _turf.polygon(c));
       if (pieces.length < 2) continue; // the path did not separate this shape
 
       // The band slice inside the polygon is handed to one side, so the two
       // new polygons tile the original exactly — no gap, no overlap.
       let bandInside = null;
       try {
-        bandInside = turf.intersect(band, polyGeo);
+        bandInside = _turf.intersect(band, polyGeo);
       } catch (e) {}
 
       // Sort every piece onto side A or side B of the drawn path
       const groupA = [];
       const groupB = [];
       pieces.forEach(p => {
-        const c = turf.centroid(p).geometry.coordinates;
+        const c = _turf.centroid(p).geometry.coordinates;
         (nearestPathSide(c[0], c[1], drawnPath, cosLat) >= 0 ? groupA : groupB).push(p);
       });
       if (bandInside && bandInside.geometry) {
-        const bc = turf.centroid(bandInside).geometry.coordinates;
+        const bc = _turf.centroid(bandInside).geometry.coordinates;
         (nearestPathSide(bc[0], bc[1], drawnPath, cosLat) >= 0 ? groupA : groupB).push(bandInside);
       }
 
@@ -223,7 +272,7 @@ export async function executeSplitWithLine(latlngs) {
         let acc = g[0];
         for (let i = 1; i < g.length; i++) {
           try {
-            const u = turf.union(acc, g[i]);
+            const u = _turf.union(acc, g[i]);
             if (u && u.geometry) acc = u;
           } catch (e) {}
         }
@@ -242,35 +291,72 @@ export async function executeSplitWithLine(latlngs) {
       });
       const ci = S.countryLayers.indexOf(poly);
       if (ci >= 0) S.countryLayers.splice(ci, 1);
-      addSplitPiece({
-        type: 'Feature',
-        properties: {},
-        geometry: finalA.geometry
-      }, `${baseName} (A)`, nextUniqueColor(), prevProps);
-      const layerB = addSplitPiece({
-        type: 'Feature',
-        properties: {},
-        geometry: finalB.geometry
-      }, `${baseName} (B)`, nextUniqueColor(), prevProps);
-      lastPiece = layerB || S.activeSelectedLayer;
-      splitCount++;
+
+      if (isDeleteMode) {
+        // Split-and-delete: keep only the larger half, discard the smaller
+        let areaA = 0, areaB = 0;
+        try { areaA = _turf.area(finalA); } catch {}
+        try { areaB = _turf.area(finalB); } catch {}
+        const keepLargerA = areaA >= areaB;
+        const keepGeo = keepLargerA ? finalA : finalB;
+        // The deleted half is simply not added back
+        const kept = addSplitPiece({
+          type: 'Feature',
+          properties: {},
+          geometry: keepGeo.geometry
+        }, `${baseName} (trimmed)`, nextUniqueColor(), prevProps);
+        lastPiece = kept || S.activeSelectedLayer;
+        splitCount++;
+      } else {
+        addSplitPiece({
+          type: 'Feature',
+          properties: {},
+          geometry: finalA.geometry
+        }, `${baseName} (A)`, nextUniqueColor(), prevProps);
+        const layerB = addSplitPiece({
+          type: 'Feature',
+          properties: {},
+          geometry: finalB.geometry
+        }, `${baseName} (B)`, nextUniqueColor(), prevProps);
+        lastPiece = layerB || S.activeSelectedLayer;
+        splitCount++;
+      }
     }
+    // clear lock after execution
+    S._splitLockedLayer = null;
+    S.splitDeleteMode = false;
+    if (S.map) S.map.getContainer().style.cursor = '';
     if (splitCount === 0) {
       setSplitStatus('no split', null);
-      showToast('The path did not separate any shape — draw it right across the whole polygon');
+      showToast('The path did not separate the selected shape — draw it right across the whole polygon');
       return;
     }
     if (lastPiece) populateStyleDrawer(lastPiece);
     updateStats();
     updateCountriesUI();
     renderCountryResults();
-    setSplitStatus(`${splitCount} split`, 'ok');
-    showToast(`Split complete — ${splitCount} shape${splitCount > 1 ? 's' : ''} cut into parts`);
+    if (isDeleteMode) {
+      setSplitStatus(`${splitCount} trimmed`, 'ok');
+      showToast(`Split & delete complete — ${splitCount} shape${splitCount > 1 ? 's' : ''} trimmed (smaller half removed)`);
+    } else {
+      setSplitStatus(`${splitCount} split`, 'ok');
+      showToast(`Split complete — ${splitCount} shape${splitCount > 1 ? 's' : ''} cut into parts`);
+    }
   } catch (err) {
     console.warn('Split failed:', err);
+    S._splitLockedLayer = null;
+    S.splitDeleteMode = false;
+    if (S.map) S.map.getContainer().style.cursor = '';
     setSplitStatus('failed', null);
     showToast('Split failed: ' + err.message);
   }
 }
 
 // ================= MAGNETIC EDGE & VERTEX SNAPPING ENGINE =================
+
+if (typeof window !== 'undefined') {
+  window.startSplitMode = startSplitMode;
+  window.startSplitAndDeleteMode = startSplitAndDeleteMode;
+  window.cancelSplitMode = cancelSplitMode;
+  window.executeSplitWithLine = executeSplitWithLine;
+}

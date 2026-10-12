@@ -7,7 +7,7 @@ import { turf } from '../heavyLibs.js';
 export function onFeatureClick(layer) {
   const geo = layer.toGeoJSON();
   let areaStr = "";
-  if (geo.geometry.type.includes('Polygon') && window.turf) {
+  if (geo.geometry.type.includes('Polygon') && (turf || (typeof window !== 'undefined' ? window.turf : null))) {
     try {
       const sqKm = (turf.area(geo) / 1e6).toFixed(3);
       areaStr = `<br><span class="text-[11px] text-slate-400">Land Area: ${sqKm} km²</span>`;

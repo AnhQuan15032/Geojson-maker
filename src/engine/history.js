@@ -96,6 +96,7 @@ export function restoreHistoryState(snap) {
           ...f.properties
         };
         layer.on('click', () => {
+    if (S.splitModeActive) return;
           S.activeSelectedLayer = layer;
           populateStyleDrawer(layer);
           onFeatureClick(layer);

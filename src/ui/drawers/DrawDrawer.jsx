@@ -193,28 +193,43 @@ export function DrawDrawer() {
           </span>
         </div>
         <p className="text-[10px] text-slate-400 leading-relaxed">
-          {' Draw a line — or a bent polyline — straight across a polygon. It is severed along your exact path into '}
+          {' Draw a line — or a bent polyline — straight across the selected polygon. It is severed along your exact path into '}
           <b className="text-slate-200">
             two new polygons
           </b>
           {', each with its own unique color. Click point by point for a polyline, double-click / double-tap to finish. '}
         </p>
-        <label className="flex items-center justify-between p-2 bg-slate-900/60 border border-slate-700/60 rounded-xl cursor-pointer">
-          <span className="text-[10px] font-bold text-slate-300">
-            Split only the selected shape
+        <div className="flex items-center justify-between p-2 bg-slate-900/60 border border-rose-800/50 rounded-xl">
+          <span className="text-[10px] font-bold text-rose-200 flex items-center gap-1.5">
+            <Icon name="lock" className="w-3 h-3" />
+            {' Locked to selected shape only'}
           </span>
-          <input type="checkbox" id="split-selected-only" checked="" className="w-4 h-4 accent-rose-500 rounded" />
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          <button onClick={() => { actions.startSplitMode() }} id="btn-split" className="col-span-2 p-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition">
+          <span className="text-[9px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono">selected only</span>
+        </div>
+        <input type="checkbox" id="split-selected-only" defaultChecked readOnly className="hidden" />
+        <p className="text-[10px] text-amber-300/80 leading-relaxed flex items-center gap-1">
+          <Icon name="info" className="w-3 h-3 shrink-0" />
+          {' Select a shape first on the map, then press a split button. Selection is locked while drawing.'}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => { actions.startSplitMode() }} id="btn-split" className="p-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition">
             <Icon name="split" className="w-4 h-4" />
             {' Draw Split Line '}
           </button>
-          <button onClick={() => { actions.cancelSplitMode() }} className="p-3 bg-slate-700 hover:bg-slate-600 rounded-xl text-[11px] font-bold text-slate-200 flex items-center justify-center gap-1.5 active:scale-95 transition">
-            <Icon name="x" className="w-3.5 h-3.5" />
-            {' Stop '}
+          <button onClick={() => { actions.startSplitAndDeleteMode() }} id="btn-split-delete" className="p-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition">
+            <Icon name="trash-2" className="w-4 h-4" />
+            {' Split & Delete '}
           </button>
         </div>
+        <div className="grid grid-cols-1 gap-2">
+          <button onClick={() => { actions.cancelSplitMode() }} className="p-2.5 bg-slate-700 hover:bg-slate-600 rounded-xl text-[11px] font-bold text-slate-200 flex items-center justify-center gap-1.5 active:scale-95 transition">
+            <Icon name="x" className="w-3.5 h-3.5" />
+            {' Stop / Cancel '}
+          </button>
+        </div>
+        <p className="text-[10px] text-slate-500 leading-relaxed">
+          <b className="text-amber-300">Split & Delete:</b> same blade, but the smaller half is automatically removed — useful to trim / erase part of a shape.
+        </p>
       </div>
       {/* MERGE REGIONS INTO ONE */}
       <div className="bg-slate-800/80 p-3 rounded-2xl border border-violet-700/50 space-y-2.5 mt-4">

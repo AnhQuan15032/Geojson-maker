@@ -131,6 +131,7 @@ import {
 } from './seaDetect.js';
 import {
   cancelSplitMode,
+  startSplitAndDeleteMode,
   startSplitMode,
 } from './split.js';
 import {
@@ -173,6 +174,7 @@ const actions = {
   bakePolygonsIntoMap,
   boostCoastDetail,
   cancelSplitMode,
+  startSplitAndDeleteMode,
   clearDetectedCoastPreview,
   clearMergeSelection,
   clearOsmCoastline,
@@ -237,6 +239,7 @@ const actions = {
   setSnappingEnabled,
   simplifySelectedCoast,
   snapSelectionToOsmCoast,
+  startSplitAndDeleteMode,
   startSplitMode,
   startTutorial,
   straightenAllEdges,

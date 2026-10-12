@@ -66,6 +66,7 @@ export function loadGeoDataObject(geoObj) {
     onEachFeature: (feature, layer) => {
       setupLayerProperties(layer);
       layer.on('click', () => {
+    if (S.splitModeActive) return;
         S.activeSelectedLayer = layer;
         populateStyleDrawer(layer);
         onFeatureClick(layer);

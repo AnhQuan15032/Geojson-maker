@@ -138,6 +138,18 @@ export function startEngine() {
       showToast('Select-on-map disabled');
       return;
     }
+    if (S.splitModeActive && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      S.splitModeActive = false;
+      S.splitDeleteMode = false;
+      S._splitLockedLayer = null;
+      if (S.map && S.map.pm.globalDrawModeEnabled && S.map.pm.globalDrawModeEnabled()) S.map.pm.disableDraw();
+      if (S.map) S.map.getContainer().style.cursor = '';
+      setSplitStatus('idle');
+      showToast('Split cancelled');
+      return;
+    }
     if (S.seaPickMode && e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -387,9 +399,12 @@ export function initMap() {
     // Split mode: the drawn line is a blade, not a shape
     if (S.splitModeActive && layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
       S.drawnItems.removeLayer(layer);
+      const wasDelete = !!S.splitDeleteMode;
+      // keep flags for executeSplitWithLine to read, then clear cursor/active after
       S.splitModeActive = false;
+      // S.splitDeleteMode is cleared inside executeSplitWithLine after reading wasDelete
       setSplitStatus('splitting…', 'busy');
-      executeSplitWithLine(layer.getLatLngs());
+      executeSplitWithLine(layer.getLatLngs(), wasDelete);
       return;
     }
     cleanupDrawCurveGhost();
@@ -420,6 +435,7 @@ export function initMap() {
       curveLayerAllEdges(layer, S.drawCurveAmount);
     }
     layer.on('click', () => {
+      if (S.splitModeActive) return;
       S.activeSelectedLayer = layer;
       populateStyleDrawer(layer);
       onFeatureClick(layer);
@@ -468,6 +484,9 @@ export function initMap() {
     clearDrawingPointLabels();
     if (S.splitModeActive) {
       S.splitModeActive = false;
+      S.splitDeleteMode = false;
+      S._splitLockedLayer = null;
+      if (S.map) S.map.getContainer().style.cursor = '';
       setSplitStatus('idle');
       showToast('Split cancelled');
     }

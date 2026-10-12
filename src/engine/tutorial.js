@@ -464,3 +464,12 @@ export function locateUser() {
     showToast("Centered on GPS");
   }, () => showToast("Could not retrieve GPS location"));
 }
+
+if (typeof window !== 'undefined') {
+  window.tutorialGo = tutorialGo;
+  window.tutorialNext = tutorialNext;
+  window.tutorialPrev = tutorialPrev;
+  window.startTutorial = startTutorial;
+  window.endTutorial = endTutorial;
+  window.locateUser = locateUser;
+}
