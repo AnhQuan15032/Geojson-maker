@@ -81,6 +81,17 @@ export function AppHeader() {
             </b>
           </span>
         </button>
+        {/* Cut Sea islands — OFF means no-islands mode (mainland only) */}
+        <button onClick={() => { actions.toggleCutSeaNoIslands() }} id="btn-islands-header" title="Cut Sea islands: ON unites mainland & islands in one region, OFF keeps the mainland only" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" id="indicator-islands-header"></span>
+          <Icon name="waves" className="w-3.5 h-3.5 text-cyan-400" />
+          <span>
+            {'Islands: '}
+            <b id="text-islands-header" className="text-emerald-400">
+              ON
+            </b>
+          </span>
+        </button>
         {/* Latitude-Longitude Grid Alignment Overlay */}
         <button onClick={() => { actions.toggleLatLngGrid() }} id="btn-grid-header" title="Toggle Latitude-Longitude alignment grid overlay" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
           <span className="w-2 h-2 rounded-full bg-slate-500" id="indicator-grid-header"></span>

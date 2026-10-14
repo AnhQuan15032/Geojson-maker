@@ -16,4 +16,16 @@ window.HTMLElement.prototype.getBoundingClientRect = function () {
 window.URL.createObjectURL = window.URL.createObjectURL || (() => 'blob:stub');
 window.URL.revokeObjectURL = window.URL.revokeObjectURL || (() => {});
 
+// jsdom has no matchMedia; mobileHaptic()/isMobileAppUI() call it. Report desktop.
+window.matchMedia = window.matchMedia || ((query) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener() {},
+  removeListener() {},
+  addEventListener() {},
+  removeEventListener() {},
+  dispatchEvent: () => false,
+}));
+
 export {};

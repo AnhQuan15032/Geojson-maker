@@ -11,6 +11,9 @@ const initialState = {
   map: undefined,
   drawnItems: undefined,
   autoCutSeaEnabled: false,
+  // Cut Sea "no islands" mode: keep only the largest landmass (mainland) and
+  // drop every secondary piece instead of uniting them into one MultiPolygon.
+  cutSeaNoIslands: false,
   baseTileLayers: {},
   borderOverlays: {},
   activeBaseKey: 'dark',

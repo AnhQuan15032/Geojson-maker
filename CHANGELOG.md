@@ -2,6 +2,21 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.2.7] — 2026-10-14 — Cut Sea: No Islands Mode
+
+### Added
+- **No Islands Mode** — `S.cutSeaNoIslands` (default `false`). When on, Cut Sea keeps only the largest landmass (the mainland) and drops every island found inside the drawn area, instead of uniting mainland + islands into one `MultiPolygon`.
+- **`cutSeaFromPolygon(layer, opts)`** — new second argument: `{ noIslands: true }` (or a bare boolean) overrides the global toggle for that single call. Resolution order is *explicit option → `S.cutSeaNoIslands`*.
+- **`cutSeaNoIslandsNow()`** — one-shot action that trims the active selection (or the last drawn polygon) in mainland-only mode without flipping the saved toggle.
+- **`toggleCutSeaNoIslands()` / `updateCutSeaNoIslandsUI()`** — toggle + null-safe UI sync (the latter is called from `startEngine()`).
+- **UI** — an *Islands* pill in the desktop header (`#btn-islands-header`, next to Auto-Cut), an *Isles* button in the mobile mode rail (`#btn-islands-mobile`), a *Cut Sea — No Islands Mode* toggle card in Settings (replacing the static "Unified Island Region" badge), and a full-width **Cut Sea (Mainland Only)** button in the Style panel. Labels read `Islands: ON` = islands kept (default), `Islands: OFF` = no-islands mode.
+- **Result metadata** — the trimmed shape now carries `islandsRemoved: <n>` and `noIslandsMode: <bool>`, alongside `islandCount: 0` / `isUnifiedIslandRegion: false` when the mode is active.
+- **Tests** — `src/__tests__/cut-sea-no-islands.test.js` (9 cases, real Leaflet map + real turf + synthetic coastline fixtures): default mode unites mainland + 2 islands into 3 parts, the option keeps a single `Polygon` with the largest landmass, the global toggle alone drives the cut, an explicit option overrides the toggle in both directions, the one-shot action leaves the toggle untouched, `triggerCutSeaNow()` (Auto-Cut path) respects the mode, the UI pills/checkbox sync, and a mainland-only area is unaffected by the mode.
+
+### Fixed
+- **Cut Sea metadata was silently stripped** — `setupLayerProperties()` replaces `feature.properties` with only the style keys, and because `newLayer.feature` and the freshly built `unifiedFeature` are the same object, `islandCount` / `isUnifiedIslandRegion` (and the new `islandsRemoved` / `noIslandsMode`) were lost before an export could ever see them. The metadata is now snapshotted before the normalisation call and re-applied on top.
+- **Test harness** — `src/__tests__/dom-stubs.js` now stubs `window.matchMedia` (jsdom lacks it), which `mobileHaptic()` / `isMobileAppUI()` require.
+
 ## [1.2.6] — 2026-10-14 — Draw Split Polygon + Split & Delete Polygon
 
 ### Added

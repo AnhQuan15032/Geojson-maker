@@ -54,18 +54,27 @@ export function SettingsDrawer() {
         </p>
       </div>
 
-      {/* 2. ISLAND COASTLINE COMBINING */}
-      <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-cyan-800/50 space-y-2 mb-4">
+      {/* 2. ISLAND HANDLING WHEN CUTTING SEA */}
+      <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-cyan-800/50 space-y-2.5 mb-4">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-            <Icon name="combine" className="w-4 h-4 text-cyan-400" />
-            Unified Island Region (MultiPolygon)
+            <Icon name="waves" className="w-4 h-4 text-cyan-400" />
+            Cut Sea — No Islands Mode
           </span>
-          <span className="text-[10px] font-bold text-cyan-400">ACTIVE</span>
+          <label className="flex items-center gap-2 cursor-pointer shrink-0">
+            <span id="status-cut-no-islands" className="text-[10px] font-bold text-slate-400">OFF</span>
+            <input type="checkbox" id="toggle-cut-no-islands" onChange={() => { actions.toggleCutSeaNoIslands() }} className="w-4 h-4 accent-cyan-500 rounded" />
+          </label>
         </div>
         <p className="text-[10px] text-slate-400 leading-relaxed">
-          All islands in a drawn area after cutting coastlines are preserved in a
-          <b className="text-cyan-300"> single unified region</b>. Styling, editing, and exporting applies to mainland and all islands together.
+          <b className="text-slate-200">OFF (default)</b> — every island inside the drawn area is preserved and united with the mainland into
+          <b className="text-cyan-300"> one single region</b> (MultiPolygon), so styling, editing and exporting apply to all of them together.
+        </p>
+        <p className="text-[10px] text-slate-400 leading-relaxed">
+          <b className="text-amber-300">ON</b> — only the
+          <b className="text-slate-200"> largest landmass (mainland)</b> is kept; all islands are dropped. Use it to clean up archipelagos, or grab a single clean outline. Applies to
+          <b className="text-slate-200"> Cut Sea</b>, the
+          <b className="text-slate-200"> Auto-Cut</b> toggle and the one-shot button in the Style panel.
         </p>
       </div>
 

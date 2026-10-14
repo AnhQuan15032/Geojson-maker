@@ -1,5 +1,18 @@
 export const CHANGELOG = [
   {
+    version: '1.2.7',
+    date: '2026-10-14',
+    title: 'Cut Sea — No Islands Mode',
+    changes: [
+      'New no-islands mode for Cut Sea — keep only the mainland and drop every island inside your drawn area, instead of uniting them into one multi-part region',
+      'Islands pill in the header and mobile rail (Islands: ON = united with the mainland, OFF = mainland only), plus a proper toggle in Settings',
+      'New one-shot button in the Style panel — Cut Sea (Mainland Only) trims the current selection without changing your saved mode',
+      'Works with Auto-Cut: enable the mode once and every coastline trim that follows keeps the mainland only',
+      'The result records what happened — islandsRemoved and noIslandsMode properties on the trimmed shape',
+      'Fixed — islandCount and the other Cut Sea properties were silently stripped from the shape before export',
+    ],
+  },
+  {
     version: '1.2.6',
     date: '2026-10-14',
     title: 'Draw Split Polygon + Split & Delete Polygon',

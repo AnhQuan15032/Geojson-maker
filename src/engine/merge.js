@@ -740,11 +740,14 @@ export function getLastDrawnPolygon() {
   return null;
 }
 
-export async function cutSeaFromPolygon(targetLayer) {
+export async function cutSeaFromPolygon(targetLayer, opts) {
   if (!targetLayer) {
     showToast("Select a polygon first!");
     return;
   }
+  // No-islands mode: keep only the mainland. An explicit option wins over the
+  // global toggle so one-shot buttons can force either behaviour.
+  const noIslands = typeof opts === 'boolean' ? opts : opts && typeof opts.noIslands === 'boolean' ? opts.noIslands : !!S.cutSeaNoIslands;
 
   // Turf powers the boolean geometry ops — make sure it's here
   await ensureHeavyLibs();
@@ -900,11 +903,20 @@ export async function cutSeaFromPolygon(targetLayer) {
   const maxArea = primary.area;
 
   // Filter logic:
-  // Real islands are ALWAYS preserved!
-  // ONLY filter out accidental opposite-shore slivers that came from a giant continent across open water.
+  // Real islands are ALWAYS preserved — unless no-islands mode is on, in which
+  // case only the mainland survives and every secondary piece is dropped.
+  // Otherwise ONLY filter out accidental opposite-shore slivers that came from a
+  // giant continent across open water.
   const keptSecondary = [];
+  let droppedIslands = 0;
   for (let i = 1; i < ranked.length; i++) {
     const item = ranked[i];
+
+    // 0. No-islands mode: mainland only — drop every secondary piece
+    if (noIslands) {
+      droppedIslands++;
+      continue;
+    }
 
     // 1. Fully enclosed islands inside the drawn region are 100% kept
     if (item.isFullyEnclosedIsland) {
@@ -966,7 +978,10 @@ export async function cutSeaFromPolygon(targetLayer) {
       "stroke-width": 0,
       "stroke-dasharray": null,
       islandCount: islandCount,
-      isUnifiedIslandRegion: islandCount > 0
+      isUnifiedIslandRegion: islandCount > 0,
+      // Record what no-islands mode threw away, so the result stays explainable
+      islandsRemoved: droppedIslands,
+      noIslandsMode: !!noIslands
     },
     geometry: unifiedGeometry
   };
@@ -984,8 +999,17 @@ export async function cutSeaFromPolygon(targetLayer) {
       dashArray: null
     }
   }).getLayers()[0];
+  // Snapshot the metadata BEFORE setupLayerProperties(): newLayer.feature and
+  // unifiedFeature are the same object, and setupLayerProperties() replaces
+  // feature.properties with just the style keys — which would silently drop
+  // islandCount / islandsRemoved / noIslandsMode before they could reach an export.
+  const cutMeta = { ...unifiedFeature.properties };
   newLayer.feature = unifiedFeature;
   setupLayerProperties(newLayer);
+  newLayer.feature.properties = {
+    ...newLayer.feature.properties,
+    ...cutMeta,
+  };
   applyShapeLockStyle(newLayer);
   S.drawnItems.addLayer(newLayer);
   S.activeSelectedLayer = newLayer;
@@ -998,7 +1022,14 @@ export async function cutSeaFromPolygon(targetLayer) {
   populateStyleDrawer(newLayer);
   updateMobileSelectionBar();
   updateStats();
-  showToast(islandCount > 0 ? `Coastline trimmed! United mainland & ${islandCount} ${islandCount === 1 ? 'island' : 'islands'} in 1 single region.` : "Coastline trimmed cleanly! Kept land shape with no sea artifacts.");
+  if (noIslands && droppedIslands > 0) {
+    showToast(`Coastline trimmed — mainland only! ${droppedIslands} ${droppedIslands === 1 ? 'island' : 'islands'} removed.`);
+  } else if (noIslands) {
+    showToast("Coastline trimmed — mainland only (no islands were present).");
+  } else {
+    showToast(islandCount > 0 ? `Coastline trimmed! United mainland & ${islandCount} ${islandCount === 1 ? 'island' : 'islands'} in 1 single region.` : "Coastline trimmed cleanly! Kept land shape with no sea artifacts.");
+  }
+  return newLayer;
 }
 
 export function toggleAutoSeaCut() {
@@ -1040,6 +1071,69 @@ export function toggleAutoSeaCut() {
     }
     showToast("Auto-Cut Sea is now OFF");
   }
+}
+
+// ================= CUT SEA — NO ISLANDS MODE =================
+// Keeps only the largest landmass (the mainland) when cutting a shape to the
+// coast, dropping every island instead of uniting them into one MultiPolygon.
+export function updateCutSeaNoIslandsUI() {
+  const on = !!S.cutSeaNoIslands;
+  // The pills read as "Islands: ON/OFF" — ON means islands are kept (default),
+  // OFF means no-islands mode is active.
+  const setText = (id, txt, onClass, offClass) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    el.className = on ? onClass : offClass;
+  };
+  setText('text-islands-header', on ? 'OFF' : 'ON', 'text-amber-300', 'text-emerald-400');
+  setText('text-islands-mobile', on ? 'OFF' : 'ON', 'text-amber-300', 'text-emerald-300');
+
+  const ind = document.getElementById('indicator-islands-header');
+  if (ind) ind.className = on ? 'w-2 h-2 rounded-full bg-amber-400 shadow-sm shadow-amber-400' : 'w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400';
+  const indMobile = document.getElementById('indicator-islands-mobile');
+  if (indMobile) indMobile.className = on ? 'w-2 h-2 rounded-full bg-amber-400 shadow-sm shadow-amber-400' : 'w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400';
+
+  const btnHeader = document.getElementById('btn-islands-header');
+  if (btnHeader) btnHeader.classList.toggle('border-amber-500/70', on);
+  const btnMobile = document.getElementById('btn-islands-mobile');
+  if (btnMobile) {
+    btnMobile.classList.toggle('border-amber-500', on);
+    btnMobile.classList.toggle('bg-amber-950/80', on);
+    btnMobile.classList.toggle('text-amber-100', on);
+  }
+
+  // Settings card
+  const status = document.getElementById('status-cut-no-islands');
+  if (status) {
+    status.textContent = on ? 'ON' : 'OFF';
+    status.className = on ? 'text-[10px] font-bold text-amber-400' : 'text-[10px] font-bold text-slate-400';
+  }
+  const checkbox = document.getElementById('toggle-cut-no-islands');
+  if (checkbox) checkbox.checked = on;
+
+  // One-shot button label in the Style panel reflects the current default
+  const oneShot = document.getElementById('btn-cut-sea-no-islands');
+  if (oneShot) oneShot.classList.toggle('ring-1', on);
+}
+
+export function toggleCutSeaNoIslands() {
+  S.cutSeaNoIslands = !S.cutSeaNoIslands;
+  mobileHaptic(S.cutSeaNoIslands ? [7, 24, 7] : 7);
+  updateCutSeaNoIslandsUI();
+  showToast(S.cutSeaNoIslands ? 'Cut Sea: islands OFF — mainland only will be kept' : 'Cut Sea: islands ON — mainland & islands united in one region');
+}
+
+// One-shot: cut the current shape to the coast with islands dropped, regardless
+// of how the global toggle is set.
+export async function cutSeaNoIslandsNow() {
+  let layer = S.activeSelectedLayer || getLastDrawnPolygon();
+  if (!layer) {
+    showToast('Please draw a polygon first!');
+    return null;
+  }
+  layer = healLayerGeometryIfCorrupted(layer);
+  return cutSeaFromPolygon(layer, { noIslands: true });
 }
 
 // ================= REFERENCE IMAGE ENGINE =================

@@ -21,6 +21,7 @@ import {
   toggleMergeCandidate,
   toggleMergeMode,
   triggerCutSeaNow,
+  updateCutSeaNoIslandsUI,
   updateMergeModeUI,
 } from './merge.js';
 import {
@@ -69,6 +70,7 @@ export function startEngine() {
   updateDeleteModeUI();
   updateMergeModeUI();
   updateSnappingUI();
+  updateCutSeaNoIslandsUI();
   initMobileAppShell();
   updateHistoryButtons();
   initGuiSettings();

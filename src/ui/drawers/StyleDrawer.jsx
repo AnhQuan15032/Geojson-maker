@@ -190,6 +190,10 @@ export function StyleDrawer() {
             {' Delete '}
           </button>
         </div>
+        <button onClick={() => { actions.cutSeaNoIslandsNow() }} id="btn-cut-sea-no-islands" title="Cut to the coastline and keep only the mainland — every island in the drawn area is dropped" className="w-full p-2.5 bg-slate-800 hover:bg-slate-700 border border-cyan-800/60 rounded-xl text-[11px] font-bold text-cyan-200 flex items-center justify-center gap-1.5 active:scale-95 transition">
+          <Icon name="waves" className="w-3.5 h-3.5" />
+          {' Cut Sea — no islands (mainland only) '}
+        </button>
       </div>
     </div>
   );

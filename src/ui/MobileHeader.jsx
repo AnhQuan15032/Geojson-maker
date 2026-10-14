@@ -69,6 +69,11 @@ export function MobileHeader() {
             <Icon name="scissors" className="w-3.5 h-3.5" />
             <span>Auto coast <b id="text-sea-mobile" className="text-slate-500">OFF</b></span>
           </button>
+          <button onClick={() => { actions.toggleCutSeaNoIslands() }} id="btn-islands-mobile" className="mobile-mode-btn">
+            <span id="indicator-islands-mobile" className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400"></span>
+            <Icon name="waves" className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Isles <b id="text-islands-mobile" className="text-emerald-300">ON</b></span>
+          </button>
         </div>
 
         {/* overflow menu — slides down from topbar */}

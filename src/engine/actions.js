@@ -74,13 +74,16 @@ import {
   applySingleColorToAll,
   clearMergeSelection,
   cutSeaFromPolygon,
+  cutSeaNoIslandsNow,
   executeMerge,
   mergeAllLoadedUnits,
   mergeAllTouching,
   removeLoadedCountries,
   toggleAutoSeaCut,
+  toggleCutSeaNoIslands,
   toggleMergeMode,
   triggerCutSeaNow,
+  updateCutSeaNoIslandsUI,
 } from './merge.js';
 import {
   setSnapDistance,
@@ -185,6 +188,7 @@ const actions = {
   showToast,
   curveAllEdges,
   cutSeaFromPolygon,
+  cutSeaNoIslandsNow,
   deleteSelectedLoaded,
   deleteSelectedOrLast,
   detectCoastlineFromSeaColor,
@@ -248,6 +252,7 @@ const actions = {
   toggleAspectRatioLock,
   toggleAutoSeaCut,
   toggleBorderOverlay,
+  toggleCutSeaNoIslands,
   toggleCurveEdgeMode,
   toggleDeleteMode,
   toggleDrawer,
@@ -270,6 +275,7 @@ const actions = {
   undoHistory,
   updateActiveFeatureProp,
   updateActiveStyle,
+  updateCutSeaNoIslandsUI,
   zoomToSelection,
 };
 
