@@ -212,17 +212,9 @@ html, body {
       animation: tourPulse 1.5s ease-in-out infinite;
     }
 
-    /* ================= MAP LEGEND & CREATIONS ================= */
-    #map-legend-container {
-      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    #map-legend-container.collapsed #legend-body {
-      display: none !important;
-    }
-    #map-legend-container.collapsed {
-      width: auto !important;
-      min-width: 0 !important;
-    }
+    /* ================= SCROLLBARS ================= */
+    /* (Map Legend + Discover/Creations panels were removed — continents now
+       live in the Map panel, see #layers-drawer below) */
     .custom-scrollbar::-webkit-scrollbar {
       width: 4px;
     }
@@ -653,12 +645,13 @@ html, body {
       #map { width: 100vw; }
     }
 
-    /* Fix: ensure Load buttons inside Discover are always clickable — even during transitions or on touch */
-    #creations-drawer button {
+    /* Fix: ensure Load buttons inside the Map panel (continents + countries) are
+       always clickable — even during transitions or on touch */
+    #layers-drawer button {
       pointer-events: auto !important;
       touch-action: manipulation;
       -webkit-tap-highlight-color: transparent;
     }
-    #creations-drawer .sheet-drawer.open {
+    #layers-drawer .sheet-drawer.open {
       pointer-events: auto;
     }

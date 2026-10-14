@@ -1,38 +1,10 @@
-// No storage — just loadable presets. Discover = demos + continents (real geometries).
-// Actual continent load: fetches Natural Earth countries geojson and unions by CONTINENT property.
+// No storage — just loadable presets. Continents (real geometries) now live in the Map panel.
 
 export function formatBytes(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
-
-// ---- Demo maps (keep Discover usable offline) ----
-const DEMO_VN_GJ = {
-  type: 'FeatureCollection',
-  features: [{
-    type: 'Feature',
-    properties: { name: 'Vietnam — central coast', fill: '#10b981' },
-    geometry: { type: 'Polygon', coordinates: [[[108.2,16.8],[109.5,16.8],[109.5,15.2],[108.2,15.2],[108.2,16.8]]] }
-  },{
-    type: 'Feature',
-    properties: { name: 'Vietnam — south', fill: '#0ea5e9' },
-    geometry: { type: 'Polygon', coordinates: [[[106.5,11.2],[107.8,11.2],[107.8,9.8],[106.5,9.8],[106.5,11.2]]] }
-  }]
-};
-const DEMO_ALPINE_GJ = {
-  type: 'FeatureCollection',
-  features: [{
-    type: 'Feature',
-    properties: { name: 'Alps — ridge', fill: '#f59e0b' },
-    geometry: { type: 'Polygon', coordinates: [[[7.5,46.2],[9.8,46.2],[9.8,45.1],[7.5,45.1],[7.5,46.2]]] }
-  }]
-};
-export const DEMO_MAPS = [
-  { id: 'demo_vn', title: 'Vietnam Coastline Study', author:{name:'demo_user', avatar:''}, bytes: 0, createdAt: Date.now()-86400000, preview: '', geojson: DEMO_VN_GJ, isPublic: true, kind: 'demo' },
-  { id: 'demo_alpine', title: 'Alpine Borders', author:{name:'geo_artist', avatar:''}, bytes: 0, createdAt: Date.now()-172800000, preview: '', geojson: DEMO_ALPINE_GJ, isPublic: true, kind: 'demo' },
-];
-DEMO_MAPS.forEach(m=>{ m.bytes = new TextEncoder().encode(JSON.stringify(m.geojson)+(m.preview||'')).length; });
 
 // ---- Continents definitions — colors and fallback rough geometry ----
 const CONTINENT_FALLBACKS = {
@@ -98,8 +70,9 @@ export const CONTINENTS = CONTINENT_DEFS.map((d, i) => ({
 }));
 CONTINENTS.forEach(m=>{ m.bytes = new TextEncoder().encode(JSON.stringify(m.geojson)).length; });
 
-// Keep a single list for Discover compatibility
-export const PRESET_MAPS = [...DEMO_MAPS, ...CONTINENTS];
+// Keep a single list for map-section compatibility
+export const PRESET_MAPS = [...CONTINENTS];
+export const DEMO_MAPS = [];
 
 // ---- Actual continent loader — fetch Natural Earth and union ----
 let _countriesCache = null;
@@ -237,16 +210,12 @@ export async function listDiscover(limit=20) {
   return PRESET_MAPS.slice(0, limit);
 }
 export async function getMap(id) {
-  // check demos first
-  const demo = DEMO_MAPS.find(m=>m.id===id);
-  if (demo) return demo;
   // check continents — return real geometry if available
   const contDef = CONTINENT_DEFS.find(c=>c.id===id);
   if (contDef) {
     const base = CONTINENTS.find(c=>c.id===id);
     try {
       const realGj = await getContinentRealGeoJSON(contDef.continent, contDef.color);
-      // return a new doc with real geojson (keep same id/title/color)
       const doc = { ...base, geojson: realGj, bytes: new TextEncoder().encode(JSON.stringify(realGj)).length, isReal: true };
       return doc;
     } catch (e) {

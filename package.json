@@ -4,7 +4,7 @@
   "engines": {
     "node": ">=20"
   },
-  "version": "1.0.0",
+  "version": "1.2.5",
   "type": "module",
   "description": "GeoJSON Studio \u2014 vector map exporter (Alight Motion, SVG, KML, PNG)",
   "scripts": {

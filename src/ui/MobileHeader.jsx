@@ -25,17 +25,11 @@ export function MobileHeader() {
           </div>
 
           <div className="flex items-center gap-1">
-            <button onClick={() => { actions.toggleDrawer('creations-drawer') }} title="Discover" aria-label="Discover" className="w-8 h-8 grid place-items-center rounded-xl bg-slate-800/80 text-amber-400 active:scale-95 transition">
-              <Icon name="compass" className="w-4 h-4" />
-            </button>
             <button onClick={() => { actions.toggleDrawer('changelog-drawer') }} title="Changelog" aria-label="Changelog" className="w-8 h-8 grid place-items-center rounded-xl bg-slate-800/80 text-sky-400 active:scale-95 transition">
               <Icon name="scroll-text" className="w-4 h-4" />
             </button>
             <button onClick={() => { window.dispatchEvent(new CustomEvent('show-welcome', {detail:{force:true}})); }} title="Welcome" aria-label="Welcome" className="w-8 h-8 grid place-items-center rounded-xl bg-slate-800/80 text-violet-400 active:scale-95 transition">
               <Icon name="sparkles" className="w-4 h-4" />
-            </button>
-            <button onClick={() => { openAuthModal() }} id="btn-auth-mobile-top" title="Discord account" aria-label="Account" className="w-8 h-8 grid place-items-center rounded-xl bg-slate-800/80 text-white active:scale-95 transition overflow-hidden border border-slate-700/60">
-              <Icon name="user" className="w-4 h-4" />
             </button>
             <button onClick={() => setMenuOpen(v => !v)} aria-label="More" className={`w-8 h-8 grid place-items-center rounded-xl active:scale-95 transition ${menuOpen ? 'bg-slate-700 text-white' : 'bg-slate-800/80 text-slate-300'}`}>
               <Icon name={menuOpen ? 'x' : 'menu'} className="w-4 h-4" />
@@ -81,11 +75,6 @@ export function MobileHeader() {
         {menuOpen && (
           <div className="mt-2 mx-1 bg-slate-900/95 backdrop-blur-xl border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden animate-[dockIn_0.25s_ease]">
             <div className="grid grid-cols-3 gap-1 p-2">
-              <button onClick={() => { setMenuOpen(false); toggleMapLegend(); }} className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
-                <span className="w-9 h-9 grid place-items-center rounded-xl bg-emerald-500/15 text-emerald-400"><Icon name="layers-3" className="w-5 h-5" /></span>
-                <span className="text-[10px] font-bold">Legend</span>
-                <span id="badge-legend-count-header" className="text-[10px] font-mono text-emerald-400">0</span>
-              </button>
               <button onClick={() => { setMenuOpen(false); actions.undoHistory(); }} id="btn-undo-mobile-menu" className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
                 <span className="w-9 h-9 grid place-items-center rounded-xl bg-slate-800 text-slate-300"><Icon name="undo-2" className="w-5 h-5" /></span>
                 <span className="text-[10px] font-bold">Undo</span>
@@ -109,7 +98,7 @@ export function MobileHeader() {
             </div>
             <div className="px-3 pb-3">
               <div className="h-px bg-slate-800 mb-2" />
-              <p className="text-[10px] text-slate-500 text-center">No storage — Discover loads demos & continents offline</p>
+              <p className="text-[10px] text-slate-500 text-center">No storage — load continents & countries from the Map panel</p>
             </div>
           </div>
         )}

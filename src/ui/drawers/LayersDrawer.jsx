@@ -1,6 +1,93 @@
+import { useState } from 'react';
 import { Icon } from '../../lib/icons';
 import actions from '../../engine/actions';
+import { CONTINENTS, getMap } from '../../lib/share';
+import { S } from '../../engine/state';
+import L from 'leaflet';
+import { showToast } from '../../engine/uiHelpers';
+import { setupLayerProperties } from '../../engine/colors';
+import { onFeatureClick } from '../../engine/exporters/geojson';
+import { populateStyleDrawer } from '../../engine/styleInspector';
+import { updateStats } from '../../engine/quickTools';
 export function LayersDrawer() {
+  const [loadingId, setLoadingId] = useState(null);
+  const handleLoadContinent = async (continent) => {
+    try {
+      setLoadingId(continent.id);
+      showToast(`Loading real ${continent.title}…`);
+      for (let i = 0; i < 20; i++) {
+        if (S.map && S.drawnItems) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (!S.map || !S.drawnItems) {
+        showToast('Map not ready yet — wait a second and try again');
+        setLoadingId(null);
+        return;
+      }
+      let full = continent;
+      try {
+        const fetched = await getMap(continent.id);
+        full = fetched.map || fetched;
+      } catch (e) {
+        console.warn('Real continent failed, using fallback', e);
+        full = continent;
+      } finally {
+        setLoadingId(null);
+      }
+      const gj = full.geojson || full;
+      if (!gj || (!gj.type && !gj.features)) {
+        showToast('This item has no GeoJSON');
+        return;
+      }
+      let added = 0;
+      const geoLayer = L.geoJSON(gj, {
+        style: f => {
+          const p = f?.properties||{};
+          const c = p.fill || full.color || '#10b981';
+          const isLine = f?.geometry?.type?.includes('Line');
+          return isLine ? { color: p.stroke||c, weight: p['stroke-width']||3, opacity:1, fillOpacity:0 } : { color: c, fillColor: c, fillOpacity: 1, weight: 0 };
+        },
+        onEachFeature: (f, layer) => {
+          try { setupLayerProperties(layer); } catch {}
+          if (f?.properties) {
+            layer.feature = layer.feature || { type:'Feature', properties:{} };
+            layer.feature.properties = { ...(f.properties), name: full.title || f.properties.name || 'Region' };
+          }
+          layer.on('click', () => {
+            if (S.splitModeActive) return;
+            S.activeSelectedLayer = layer;
+            try { populateStyleDrawer(layer); } catch {}
+            try { onFeatureClick(layer); } catch {}
+          });
+        }
+      });
+      geoLayer.eachLayer(l => {
+        if (l.eachLayer && l.getLayers && l.getLayers().length && !l.toGeoJSON) {
+          l.eachLayer(child => { S.drawnItems.addLayer(child); added++; });
+        } else {
+          S.drawnItems.addLayer(l);
+          added++;
+        }
+      });
+      if (added===0) {
+        showToast('Nothing to load');
+        return;
+      }
+      try { updateStats(); } catch {}
+      showToast(`Loaded “${full.title||continent.title}” — ${added} shape${added>1?'s':''}`);
+      actions.closeDrawers();
+      setTimeout(()=> {
+        try {
+          const b = S.drawnItems.getBounds();
+          if (b.isValid()) S.map.fitBounds(b, { padding:[30,30], maxZoom: 4 });
+        } catch {}
+      }, 120);
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to load: ' + (e.message||'error'));
+      setLoadingId(null);
+    }
+  };
   return (
     <div id="layers-drawer" className="sheet-drawer fixed bottom-0 left-0 right-0 z-40 bg-slate-900/98 backdrop-blur-xl border-t border-slate-700/80 rounded-t-3xl p-5 max-h-[75vh] overflow-y-auto">
       <div className="flex justify-between items-center mb-3">
@@ -179,6 +266,33 @@ export function LayersDrawer() {
           </div>
           <input type="checkbox" id="layer-labels" checked="" onChange={() => { actions.toggleBorderOverlay('labels') }} className="w-4 h-4 accent-indigo-500 rounded" />
         </label>
+      </div>
+      <label className="text-[11px] font-semibold text-slate-400 uppercase mb-2 mt-4 block flex items-center gap-2">
+        <Icon name="globe-2" className="w-3.5 h-3.5 text-cyan-400" /> Load Continents
+        <span className="text-[9px] font-mono text-slate-500 normal-case">7 regions</span>
+      </label>
+      <div className="bg-slate-800/80 p-3 rounded-2xl border border-cyan-800/50 space-y-2.5 mb-4">
+        <p className="text-[10px] text-slate-400 leading-relaxed">Each loads as an <b className="text-slate-200">editable polygon</b> — recolor, split, merge, or cut to real coastline.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {CONTINENTS.map(m=>(
+            <div key={m.id} className="bg-slate-800 rounded-xl border border-slate-700/60 overflow-hidden flex flex-col">
+              <div className="h-16 grid place-items-center overflow-hidden relative" style={{background: `linear-gradient(135deg, ${m.color}18, #0f172a)`}}>
+                <div className="absolute inset-0 opacity-20" style={{background: `radial-gradient(60% 60% at 50% 35%, ${m.color}, transparent)`}}/>
+                <Icon name={m.title==='Oceania' ? 'waves' : m.title==='Antarctica' ? 'snowflake' : 'globe-2'} className="w-6 h-6 relative z-10" style={{color: m.color}}/>
+              </div>
+              <div className="p-2 flex-1 flex flex-col gap-1.5">
+                <div className="text-xs font-bold text-white truncate">{m.title}</div>
+                <button
+                  type="button"
+                  disabled={loadingId===m.id}
+                  onClick={()=>handleLoadContinent(m)}
+                  className={`w-full py-2 rounded-xl text-xs font-bold text-white cursor-pointer touch-manipulation ${loadingId===m.id ? 'bg-slate-600 opacity-60' : 'bg-slate-700 hover:bg-slate-600 active:bg-slate-500'}`}
+                  style={{pointerEvents:'auto'}}
+                >{loadingId===m.id ? 'Loading…' : 'Load'}</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
       <label className="text-[11px] font-semibold text-slate-400 uppercase mb-2 mt-4 block">
         Load Country GeoJSON

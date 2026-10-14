@@ -2,6 +2,30 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.2.5] — 2026-10-14 — Simpler UI: Explorer, logins & legends removed
+
+### Removed
+- **Map Explorer (Discover)** — deleted `src/ui/drawers/CreationsDrawer.jsx`, its header/mobile buttons, the `creations-drawer` CSS rules and the demo presets (`DEMO_MAPS` is now empty; `PRESET_MAPS` = continents only).
+- **Logins demo** — deleted the Discord/sign-in buttons, the auth modal + `refreshAuthUI` DOM wiring in `src/engine/uiHelpers.js`, and `src/lib/auth.js`. Dead Worker login backend removed too (`worker/auth.js`, `worker/storage.js`, `worker/utils.js`) — `worker/index.js` only serves static assets + `GET /api/changelog`.
+- **Legends** — deleted the floating **Map Legend** panel (`toggleMapLegend` is now a no-op stub), the header `Legend` button, the mobile overflow-menu entry and the `#map-legend-container` CSS.
+
+### Changed
+- **Load Continents moved into the Map section** — the 7 continents (Africa, Europe, Asia, North America, South America, Oceania, Antarctica) now render in **Map Base & Boundaries** (`LayersDrawer`, the `Map` tab) directly above *Load Country GeoJSON*. Same robust loader as before: waits for `S.map`/`S.drawnItems`, fetches real Natural Earth geometry via `getMap(id)`, falls back to the rough polygon offline, `pointer-events:auto` + `touch-action:manipulation` so the buttons always fire, and split-mode clicks are ignored.
+- **Welcome screen** — no sign-in step; it now points at **Map → Continents** and the coastline tools.
+- **Settings** — the continents shortcut opens `layers-drawer` (labelled *Open Map*) instead of the deleted Discover drawer.
+
+## [1.2.4] — 2026-10-12 — Locked split, split & delete, offline turf
+
+### Added
+- **Split & Delete mode** — same blade interaction as Split, but the smaller half is discarded automatically (trim / erase part of a shape). `startSplitAndDeleteMode()` + `executeSplitWithLine(latlngs, deleteFlag)`, amber button next to *Draw Split Line*.
+
+### Changed
+- **Split is locked to the pre-selected region** — `startSplitMode()` requires an active polygon, stores `_splitLockedLayer`, and the store proxy ignores `S.activeSelectedLayer` changes for other layers while `S.splitModeActive`; per-layer click handlers bail out during split; the lock clears on cancel / `pm:drawend` / `Escape`.
+
+### Fixed
+- **"Turf unavailable" offline** — `ensureHeavyLibs()` now assigns `window.turf` / `window.topojson` and clears its promise on failure so a retry can happen; `merge.js`, `coastTiles.js`, `stats.js`, `exporters/geojson.js` and `countries.js` all use `turf || window.turf`.
+- **Country Load buttons not activating** — `renderCountryResults()` emits `data-country-id` and a delegated `document` click listener calls `loadCountryFeatureById(id)`, so the buttons work even when inline `onclick` is blocked by CSP or the global is missing.
+
 ## [1.2.3] — 2026-10-07 — Fix coastline bug, actual continent load
 
 ### Fixed

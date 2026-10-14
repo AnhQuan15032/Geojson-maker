@@ -24,14 +24,14 @@ export function SettingsDrawer() {
           <span className="text-xs font-bold text-cyan-200">Continents</span>
         </div>
         <p className="text-[11px] text-slate-400 leading-relaxed">
-          No saving — <b className="text-slate-200">Draw, Load, Export</b> only. Use <b className="text-cyan-300">Discover → Continents</b> to load Africa, Europe, Asia, N/S America, Oceania, Antarctica as editable shapes.
+          No saving — <b className="text-slate-200">Draw, Load, Export</b> only. Use <b className="text-cyan-300">Map → Continents</b> in the <b className="text-slate-200">Map</b> panel to load Africa, Europe, Asia, N/S America, Oceania, Antarctica as editable shapes.
         </p>
         <div className="flex gap-2">
           <button onClick={() => { actions.closeDrawers(); setTimeout(()=> { try{ window.dispatchEvent(new CustomEvent('show-welcome', { detail:{force:true}})); }catch{} }, 300); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium">
             Show welcome again
           </button>
-          <button onClick={() => { actions.toggleDrawer('creations-drawer'); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold">
-            Open Discover
+          <button onClick={() => { actions.toggleDrawer('layers-drawer'); }} className="text-[11px] px-2.5 py-1.5 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold">
+            Open Map
           </button>
         </div>
       </div>

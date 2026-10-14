@@ -11,7 +11,6 @@ import { StyleDrawer } from './ui/drawers/StyleDrawer';
 import { ImageDrawer } from './ui/drawers/ImageDrawer';
 import { LayersDrawer } from './ui/drawers/LayersDrawer';
 import { SettingsDrawer } from './ui/drawers/SettingsDrawer';
-import { CreationsDrawer } from './ui/drawers/CreationsDrawer';
 import { ChangelogDrawer } from './ui/drawers/ChangelogDrawer';
 import { WelcomeModal } from './ui/WelcomeModal';
 import { ShortcutSheet } from './ui/ShortcutSheet';
@@ -37,7 +36,6 @@ export default function App() {
       <StyleDrawer />
       <ImageDrawer />
       <LayersDrawer />
-      <CreationsDrawer />
       <ChangelogDrawer />
       <WelcomeModal />
       <TutorialOverlay />

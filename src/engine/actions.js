@@ -155,11 +155,9 @@ import {
 } from './tutorial.js';
 import {
   closeDrawers,
-  openAuthModal,
   openUploadCreationModal,
   showToast,
   toggleDrawer,
-  toggleMapLegend,
 } from './uiHelpers.js';
 
 const actions = {
@@ -180,10 +178,8 @@ const actions = {
   clearOsmCoastline,
   closeDrawers,
   copyGeoJSONToClipboard,
-  openAuthModal,
   openUploadCreationModal,
   showToast,
-  toggleMapLegend,
   curveAllEdges,
   cutSeaFromPolygon,
   deleteSelectedLoaded,

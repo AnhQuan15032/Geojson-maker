@@ -92,38 +92,11 @@ export function AppHeader() {
             </b>
           </span>
         </button>
-        {/* Map Legend Toggle */}
-        <button onClick={() => { toggleMapLegend() }} id="btn-legend-header" title="Toggle Map Legend" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
-          <Icon name="layers-3" className="w-3.5 h-3.5 text-emerald-400" />
-          <span>
-            {'Legend '}
-            <b id="badge-legend-count-header" className="text-emerald-300 font-mono text-[10px]">
-              0
-            </b>
-          </span>
-        </button>
-        {/* Discover — demos + continents (no storage) */}
-        <button onClick={() => { actions.toggleDrawer('creations-drawer') }} id="btn-creations-header" title="Discover — Load demos & continents" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
-          <Icon name="compass" className="w-3.5 h-3.5 text-amber-400" />
-          <span>
-            Discover
-          </span>
-          <span id="badge-creations-count-header" className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold">
-            9
-          </span>
-        </button>
         {/* Load GeoJSON (no storage) */}
         <button onClick={() => { actions.importGeoJSONFile(); }} id="btn-upload-header" title="Load a GeoJSON file from your device" className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3 py-1.5 rounded-full shadow-lg shadow-emerald-900/40 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition">
           <Icon name="file-up" className="w-3.5 h-3.5" />
           <span>
             Load file
-          </span>
-        </button>
-        {/* User Auth (Discord only) */}
-        <button onClick={() => { openAuthModal() }} id="btn-auth-header" title="Sign in with Discord" className="bg-slate-900/90 backdrop-blur-md pl-1.5 pr-3 py-1 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 hover:text-white flex items-center gap-1.5 active:scale-95 transition">
-          <span className="w-6 h-6 rounded-full bg-[#5865F2] grid place-items-center"><Icon name="message-circle" className="w-3.5 h-3.5 text-white" /></span>
-          <span id="text-auth-user">
-            Discord
           </span>
         </button>
         {/* Changelog */}

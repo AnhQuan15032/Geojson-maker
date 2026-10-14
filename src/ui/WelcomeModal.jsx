@@ -1,27 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../lib/icons';
 import { getSettings, setWelcomeCompleted } from '../lib/settings';
-import { getUser } from '../lib/auth';
 
 export function WelcomeModal() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    // show only once per browser, and not if already signed in
     const s = getSettings();
-    const u = getUser();
-    // delay a bit so map loads first
     const t = setTimeout(() => {
-      if (!s.welcomeCompleted && !u) {
-        // also check if we already have an auth_user in storage (returning user)
-        try {
-          const hasAuth = localStorage.getItem('auth_user') || localStorage.getItem('demo_auth_user');
-          if (!hasAuth) setVisible(true);
-          else setWelcomeCompleted(true);
-        } catch { setVisible(true); }
-      }
+      if (!s.welcomeCompleted) setVisible(true);
     }, 900);
-    // also listen for external trigger (e.g., settings "show welcome again")
     const handler = (e) => {
       if (e.detail?.force) setVisible(true);
     };
@@ -34,20 +22,6 @@ export function WelcomeModal() {
   const dismiss = (completed = true) => {
     if (completed) setWelcomeCompleted(true);
     setVisible(false);
-  };
-
-  const goDiscord = () => {
-    setWelcomeCompleted(true);
-    // local-only: prompt for display name, no Worker needed
-    const name = prompt('Display name for sharing:', 'Explorer');
-    if (name && name.trim()) {
-      try {
-        const user = { id: `local_${Date.now()}`, provider: 'local', name: name.trim(), avatar: '', createdAt: Date.now() };
-        localStorage.setItem('auth_user', JSON.stringify(user));
-      } catch {}
-    }
-    setVisible(false);
-    try { location.reload(); } catch {}
   };
 
   return (
@@ -76,7 +50,7 @@ export function WelcomeModal() {
               <Icon name="globe-2" className="w-3.5 h-3.5" /> 7 continents
             </span>
             <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur px-2.5 py-1 rounded-full border border-white/15">
-              <Icon name="trash-2" className="w-3.5 h-3.5" /> no storage
+              <Icon name="layers" className="w-3.5 h-3.5" /> Map panel
             </span>
           </div>
         </div>
@@ -84,31 +58,28 @@ export function WelcomeModal() {
         {/* body */}
         <div className="p-5 space-y-4 overflow-y-auto">
           <div className="flex gap-3">
-            <div className="w-9 h-9 rounded-xl bg-cyan-600/15 text-cyan-400 grid place-items-center shrink-0 border border-violet-500/20">
-              <Icon name="compass" className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-cyan-600/15 text-cyan-400 grid place-items-center shrink-0 border border-cyan-500/20">
+              <Icon name="globe-2" className="w-5 h-5" />
             </div>
             <div>
               <div className="text-sm font-bold text-white">Load continents</div>
-              <div className="text-xs text-slate-400 leading-relaxed">Open <span className="text-cyan-300">Discover → Continents</span> to add Africa, Europe, Asia… as <b className="text-slate-200">editable polygons</b>. Also try the <span className="text-slate-200">Borders</span> panel for any country.</div>
+              <div className="text-xs text-slate-400 leading-relaxed">Open <span className="text-cyan-300">Map → Continents</span> (the Layers panel) to add Africa, Europe, Asia… as <b className="text-slate-200">editable polygons</b>. Also use search for any country.</div>
             </div>
           </div>
           <div className="flex gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-600/15 text-emerald-400 grid place-items-center shrink-0 border border-emerald-500/20">
-              <Icon name="message-circle" className="w-5 h-5" />
+              <Icon name="scissors" className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-sm font-bold text-white">Discord (optional)</div>
-              <div className="text-xs text-slate-400 leading-relaxed">Sign in with <b className="text-white">Discord</b> to show your avatar on shared maps. Skip if you just want to share links.</div>
+              <div className="text-sm font-bold text-white">Cut to coastline</div>
+              <div className="text-xs text-slate-400 leading-relaxed">Draw a shape, then <b className="text-white">Cut Sea</b> to trim it to real coastlines. Use <b className="text-white">Split</b> to divide shapes.</div>
             </div>
           </div>
 
           <div className="pt-1 grid gap-2">
-            <button onClick={goDiscord} className="w-full py-3 rounded-xl bg-[#5865F2] hover:bg-[#4752c4] text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-900/30 active:scale-[0.98] transition">
-              <Icon name="message-circle" className="w-5 h-5" />
-              Continue with Discord
-            </button>
-            <button onClick={() => dismiss(true)} className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm active:scale-[0.98] transition">
-              Continue without signing in
+            <button onClick={() => dismiss(true)} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 active:scale-[0.98] transition">
+              <Icon name="arrow-right" className="w-5 h-5" />
+              Start mapping
             </button>
             <p className="text-[11px] text-center text-slate-500">No storage — everything is loaded fresh. Export to GeoJSON / SVG / PNG.</p>
           </div>

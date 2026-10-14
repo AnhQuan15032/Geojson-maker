@@ -1,5 +1,28 @@
 export const CHANGELOG = [
   {
+    version: '1.2.5',
+    date: '2026-10-14',
+    title: 'Simpler UI — Explorer, logins & legends removed',
+    changes: [
+      'Deleted Map Explorer (Discover drawer) — no demo presets, no featured maps',
+      'Deleted the logins demo — Discord/sign-in buttons, auth modal and local auth storage removed (Worker auth + KV storage files deleted)',
+      'Deleted Map Legend — floating legend panel, header button and mobile menu entry removed',
+      'Moved Load Continents into the Map panel (Map Base & Boundaries) — 7 continents load as editable polygons right next to country search',
+      'Welcome screen simplified: no sign-in step, points at Map → Continents instead',
+    ],
+  },
+  {
+    version: '1.2.4',
+    date: '2026-10-12',
+    title: 'Locked split, split & delete, offline turf',
+    changes: [
+      'Split is now locked to the pre-selected region — you cannot pick another shape while drawing the blade',
+      'Added Split & Delete mode — same blade, but the smaller half is removed automatically (trim / erase part of a shape)',
+      'Fixed "Turf unavailable" offline — heavy libs expose window.turf/topojson and every consumer falls back to the import',
+      'Fixed country Load buttons in Map Base & Boundaries — data-country-id + delegated click handler, works even if inline onclick is blocked',
+    ],
+  },
+  {
     version: '1.2.3',
     date: '2026-10-07',
     title: 'Fix coastline bug, actual continent load',

@@ -16,51 +16,36 @@ npm run build     # production bundle in dist/
 npm run check     # module-graph check + TDZ check + tests
 ```
 
-`npm run dev` alone is enough — **Discover → Load**, **Publish current** and **Upload .geojson** work offline via `localStorage` (demo maps: *Vietnam Coastline Study*, *Alpine Borders*). No sign-in required — a `Local User` is auto-created on first publish.
+`npm run dev` alone is enough — everything runs client-side. Load **continents**
+and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
+export. No sign-in, no storage, no cloud.
+
+## New in 1.2.5 — simpler UI
+
+| Change | What it means |
+|---|---|
+| **Map Explorer deleted** | The `Discover` drawer (demo presets + featured maps) is gone — `src/ui/drawers/CreationsDrawer.jsx` removed, `DEMO_MAPS` emptied |
+| **Logins demo deleted** | Discord/sign-in buttons, the auth modal and `src/lib/auth.js` are gone; dead Worker login backend (`worker/auth.js`, `worker/storage.js`, `worker/utils.js`) deleted |
+| **Legends deleted** | The floating **Map Legend** panel, its header button and the mobile menu entry are removed (`toggleMapLegend` is a no-op stub) |
+| **Load Continents → Map panel** | The 7 continents now live in **Map Base & Boundaries** (`LayersDrawer`, the `Map` tab) right above country search — each loads real Natural Earth geometry as one editable polygon |
+| **Welcome screen** | No sign-in step; it points at **Map → Continents** and the coastline tools |
+
+> **2026-10-14 — 1.2.5:** UI trimmed to the map workflow. **2026-10-12 — 1.2.4:**
+> split is locked to the pre-selected region, new **Split & Delete** mode, offline
+> `turf` fallback, and country **Load** buttons fixed via `data-country-id` +
+> delegated click.
+
+### Deploying (static — no cloud, no secrets)
 
 ```bash
-# Optional: sync across devices via Cloudflare (same UI, data in KV):
-npx wrangler dev --local --port 8787 & npm run dev  # vite proxies /api → 127.0.0.1:8787 (see vite.config.js)
-```
-
-## New in 1.2.1 — Share via link (cloud deleted)
-
-| Feature | What it does | Where |
-|---|---|---|
-| **Changelog** | `CHANGELOG.md` rendered in-app + `GET /api/changelog` | Header `scroll-text` → drawer |
-| **Auth — local display name** | Prompt for name on first Publish / Welcome; stored in `localStorage.auth_user`, no Worker needed | Header Discord button → modal |
-| **Welcome screen** | First visit shows Discord onboarding (skippable), re-open via Settings | `WelcomeModal` + `localStorage.welcomeCompleted` |
-| **Upload GeoJSON** | Drop `.geojson/.json` or **Publish current** canvas (preview from `canvas.toDataURL`) | `Upload` button + Discover drawer — **no sign-in required locally** |
-| **Discover maps** | Public maps newest-first, tap **Load** to import via `L.geoJSON` (now with 2 working demos offline) | `Community` / `Compass` drawer — tabs **Discover / My Maps** |
-| **Sharing** | Publish/Upload save to `localStorage` + generate `https://.../#share=...` link (base64). Anyone with link can Load it | Discover drawer → Share button (copies link) |
-
-> **2026-10-07 — 1.2.1:** **Cloud deleted** to fix `KV 000... not found [10041]` and `build token deleted` deploys. **Share via link** (`#share=...`) — local `1 MB` quota, `Discover` = demos + local public + shared hash, `Copy link` + `Load` for every map. **Discord is now local display name** (no Worker OAuth). **Mobile GUI** upgraded.
-
-### Cloudflare setup — *deleted* (share via link needs no cloud)
-
-> **Cloud is deleted** in 1.2.1 to fix `10041` / `build token deleted`. Sharing is now **local + URL hash** (`src/lib/share.js`): `Publish`/`Upload` → save to `localStorage.cloud_maps` + copy `https://.../#share=...` link. Open that link anywhere → Discover shows it. No `wrangler kv`, no `wrangler secret`, no Worker KV needed.
-
-```bash
-# No KV / secrets needed for sharing. Just build and deploy the static `dist`:
 npm run build          # → dist/
-# Workers (keeps same URL) — wrangler.json has only assets + main (no kv_namespaces)
-npx wrangler deploy    # or: Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git
-# Pages alternative (no Workers token needed):
+npx wrangler deploy    # Workers: assets + /api/changelog only (no KV, no auth)
+# Pages alternative:
 # npx wrangler pages deploy dist --project-name=geojson-maker
 ```
 
-No secrets needed. `WelcomeModal` → `Continue with Discord` now just prompts for a display name and saves to `localStorage.auth_user`; sharing works as that name.
-
-Quota: `bytes = JSON.stringify(geojson).length + (preview||'').length`; `usage + bytes > 1_048_576 → 402 {error:"QUOTA_EXCEEDED"}` is now checked against `localStorage` sum only (1 MB local).
-
-### How sharing works (no cloud)
-
-- **First visit:** `WelcomeModal` shows (skippable, sets `welcomeCompleted`). Re-open: Settings → Show welcome again.
-- **Publish current / Upload .geojson:** saves to `localStorage.cloud_maps` (1 MB quota) + generates `https://.../#share=<base64>` and copies to clipboard. Share that URL.
-- **Discover:** shows `2 demos + your local public maps + any #share=...` hash (parsed via `parseShareHash()`). Tap **Load** to add to map, **Share** to copy link again.
-- **My Maps:** shows your local maps with **Share** + **Load** + **Delete**. Opening a shared link shows a toast *Shared map “…” — open Discover to Load* and it appears in Discover.
-
-
+`worker/index.js` only serves the static bundle plus `GET /api/changelog`; there is
+no KV namespace, no session cookie and no OAuth route left.
 
 ## Deploying to Cloudflare Pages
 
@@ -108,7 +93,7 @@ directory.
 
 On a Workers project, set **Build command** to `npm run build` and keep the
 deploy command at its default. `wrangler.json` in this repo points the Worker's
-static assets at `./dist` and runs `worker/index.js` in front of them for the Cloud API (no KV = deploys instantly, uses in-memory + `localStorage` fallback):
+static assets at `./dist` and runs `worker/index.js` in front of them (static SPA + `GET /api/changelog` only — no KV, no auth, deploys instantly):
 
 ```json
 {
@@ -120,17 +105,9 @@ static assets at `./dist` and runs `worker/index.js` in front of them for the Cl
 }
 ```
 
-Add KV later for persistence — paste real ids from `wrangler kv namespace create`:
-
-```json
-  "kv_namespaces": [
-    { "binding": "USERS", "id": "abc…", "preview_id": "abc_preview…" },
-    { "binding": "SESSIONS", "id": "def…", "preview_id": "def_preview…" },
-    { "binding": "MAPS", "id": "ghi…", "preview_id": "ghi_preview…" }
-  ],
-```
-
-The Worker serves `GET /api/changelog`, `GET /api/auth/*`, `GET /api/discover`, `GET/POST /api/maps`, `GET /api/storage/usage` and falls through to `assets` for everything else (SPA fallback to `index.html`). Without KV it uses `worker/utils.js` in-memory `Map` (ephemeral) and the frontend's `localStorage` — same 1 MB quota, just not shared across isolates. See `worker/index.js` + `CHANGELOG.md`.
+The Worker serves `GET /api/changelog` and falls through to `assets` for everything
+else (SPA fallback to `index.html`). There is no KV namespace, no session cookie and
+no OAuth route — the app is fully client-side. See `worker/index.js` + `CHANGELOG.md`.
 
 
 Two things that will fail the build if they are wrong:
