@@ -10,6 +10,12 @@ export default defineConfig({
     // dev server answers the request with 403 "Blocked request. This host is
     // not allowed".
     allowedHosts: ['.e2b.app', 'localhost'],
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     host: '0.0.0.0',

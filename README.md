@@ -7,14 +7,45 @@ This used to be one 9,415-line `index.html`. It is now a Vite + React app.
 The original file is kept at [`legacy/index.html`](legacy/index.html) so
 behaviour can be diffed against it — and the test suite does exactly that.
 
-## Quick start
+## Quick start — zero config
 
 ```bash
 npm install
-npm run dev       # http://localhost:5173
+npm run dev       # http://localhost:5173 — works with no Cloudflare
 npm run build     # production bundle in dist/
 npm run check     # module-graph check + TDZ check + tests
 ```
+
+`npm run dev` alone is enough — everything runs client-side. Load **continents**
+and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
+export. No sign-in, no storage, no cloud.
+
+## New in 1.2.5 — simpler UI
+
+| Change | What it means |
+|---|---|
+| **Map Explorer deleted** | The `Discover` drawer (demo presets + featured maps) is gone — `src/ui/drawers/CreationsDrawer.jsx` removed, `DEMO_MAPS` emptied |
+| **Logins demo deleted** | Discord/sign-in buttons, the auth modal and `src/lib/auth.js` are gone; dead Worker login backend (`worker/auth.js`, `worker/storage.js`, `worker/utils.js`) deleted |
+| **Legends deleted** | The floating **Map Legend** panel, its header button and the mobile menu entry are removed (`toggleMapLegend` is a no-op stub) |
+| **Load Continents → Map panel** | The 7 continents now live in **Map Base & Boundaries** (`LayersDrawer`, the `Map` tab) right above country search — each loads real Natural Earth geometry as one editable polygon |
+| **Welcome screen** | No sign-in step; it points at **Map → Continents** and the coastline tools |
+
+> **2026-10-14 — 1.2.5:** UI trimmed to the map workflow. **2026-10-12 — 1.2.4:**
+> split is locked to the pre-selected region, new **Split & Delete** mode, offline
+> `turf` fallback, and country **Load** buttons fixed via `data-country-id` +
+> delegated click.
+
+### Deploying (static — no cloud, no secrets)
+
+```bash
+npm run build          # → dist/
+npx wrangler deploy    # Workers: assets + /api/changelog only (no KV, no auth)
+# Pages alternative:
+# npx wrangler pages deploy dist --project-name=geojson-maker
+```
+
+`worker/index.js` only serves the static bundle plus `GET /api/changelog`; there is
+no KV namespace, no session cookie and no OAuth route left.
 
 ## Deploying to Cloudflare Pages
 
@@ -62,17 +93,22 @@ directory.
 
 On a Workers project, set **Build command** to `npm run build` and keep the
 deploy command at its default. `wrangler.json` in this repo points the Worker's
-static assets at `./dist` and carries the empty `previews` block that
-`npx wrangler preview` requires:
+static assets at `./dist` and runs `worker/index.js` in front of them (static SPA + `GET /api/changelog` only — no KV, no auth, deploys instantly):
 
 ```json
 {
-  "name": "geojson-studio",
+  "name": "geojson-maker",
   "compatibility_date": "2026-10-03",
-  "assets": { "directory": "./dist" },
-  "previews": {}
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "main": "worker/index.js",
+  "vars": { "BASE_URL": "https://geojson-maker.buianhquan452.workers.dev" }
 }
 ```
+
+The Worker serves `GET /api/changelog` and falls through to `assets` for everything
+else (SPA fallback to `index.html`). There is no KV namespace, no session cookie and
+no OAuth route — the app is fully client-side. See `worker/index.js` + `CHANGELOG.md`.
+
 
 Two things that will fail the build if they are wrong:
 

@@ -206,11 +206,12 @@ export function renderCountryResults() {
     const layer = S.countryLayerById[e.id];
     const loaded = layer && S.drawnItems.hasLayer(layer);
     const label = mode === 'adm1' && e.admin ? `${e.name} — ${e.admin}` : e.name;
-    return `<button onclick="loadCountryFeatureById('${e.id}')" class="w-full p-2 rounded-xl border text-left text-xs flex items-center justify-between gap-2 transition ${loaded ? 'bg-indigo-950/60 border-indigo-600 text-indigo-200' : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-indigo-600 hover:bg-slate-800'}">
+    return `<button data-country-id="${e.id}" onclick="loadCountryFeatureById('${e.id}')" class="w-full p-2 rounded-xl border text-left text-xs flex items-center justify-between gap-2 transition ${loaded ? 'bg-indigo-950/60 border-indigo-600 text-indigo-200' : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-indigo-600 hover:bg-slate-800'}">
           <span class="font-semibold truncate">${escapeXml(label)}</span>
           <span class="text-[9px] font-mono shrink-0 ${loaded ? 'text-emerald-400' : 'text-slate-500'}">${loaded ? 'loaded ✓' : 'load'}</span>
         </button>`;
   }).join('');
+  // delegated fallback handled via window.__countryLoadDelegated listener below
 }
 
 export function loadCountryFeatureById(id) {
@@ -281,6 +282,7 @@ export function loadCountryFeature(entry, forceSingle) {
     });
   }
   layer.on('click', () => {
+    if (S.splitModeActive) return;
     S.activeSelectedLayer = layer;
     populateStyleDrawer(layer);
     onFeatureClick(layer);
@@ -430,6 +432,7 @@ export async function loadAdminUnits(entry, adm) {
         });
       }
       layer.on('click', () => {
+        if (S.splitModeActive) return;
         S.activeSelectedLayer = layer;
         populateStyleDrawer(layer);
         onFeatureClick(layer);
@@ -585,8 +588,9 @@ export function ensureGridIndex(list) {
 }
 
 export function findFeatureAt(latlng, list) {
-  if (!list || !list.length || !window.turf) return null;
-  const pt = turf.point([latlng.lng, latlng.lat]);
+  const _turf = turf || (typeof window !== 'undefined' ? window.turf : null);
+  if (!list || !list.length || !_turf) return null;
+  const pt = _turf.point([latlng.lng, latlng.lat]);
   const idx = ensureGridIndex(list);
   const candidates = idx && idx.get(gridKey(latlng.lng, latlng.lat)) || list;
   for (let i = 0; i < candidates.length; i++) {
@@ -595,7 +599,8 @@ export function findFeatureAt(latlng, list) {
     if (!b) continue;
     if (latlng.lng < b[0] || latlng.lng > b[2] || latlng.lat < b[1] || latlng.lat > b[3]) continue;
     try {
-      if (turf.booleanPointInPolygon(pt, ent.feature)) return ent;
+      const __turf = turf || (typeof window !== 'undefined' ? window.turf : null);
+      if (__turf && __turf.booleanPointInPolygon(pt, ent.feature)) return ent;
     } catch (e) {/* self-intersecting edge case — keep looking */}
   }
   return null;
@@ -748,3 +753,26 @@ export function toggleDeleteMode() {
 // Tap shapes to collect them, then fuse them into a single feature with
 // turf.union. Touching regions dissolve their shared border; separated
 // ones become one MultiPolygon, so provinces → country works in one pass.
+
+// Expose globals for legacy innerHTML onclick handlers (renderCountryResults)
+if (typeof window !== 'undefined') {
+  window.loadCountryFeatureById = loadCountryFeatureById;
+  window.loadCountryFeature = loadCountryFeature;
+  // Delegated fallback for Load buttons — works even if inline onclick fails or CSP blocks it
+  if (!window.__countryLoadDelegated) {
+    window.__countryLoadDelegated = true;
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('[data-country-id]');
+      if (btn && btn.closest('#country-results')) {
+        const id = btn.getAttribute('data-country-id');
+        if (id) {
+          // If inline handler already fired, this will just re-invoke idempotently; guard double-load via flag
+          if (!e.__countryHandled) {
+            e.__countryHandled = true;
+            try { loadCountryFeatureById(id); } catch {}
+          }
+        }
+      }
+    });
+  }
+}

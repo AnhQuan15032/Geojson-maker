@@ -665,3 +665,18 @@ export function updateSnappingUI() {
 }
 
 // ================= DRAW TOOLS =================
+
+if (typeof window !== 'undefined') {
+  window.setGuiTheme = setGuiTheme;
+  window.setGuiLayout = setGuiLayout;
+  window.setTextSize = setTextSize;
+  window.initGuiSettings = initGuiSettings;
+  window.toggleLatLngGrid = toggleLatLngGrid;
+  window.toggleDrawingPointLabels = toggleDrawingPointLabels;
+  window.toggleSnappingMode = toggleSnappingMode;
+  window.setSnappingEnabled = setSnappingEnabled;
+  window.setSnapEdges = setSnapEdges;
+  window.setSnapVertices = setSnapVertices;
+  window.setSnapMidpoints = setSnapMidpoints;
+  window.setSnapDistance = setSnapDistance;
+}

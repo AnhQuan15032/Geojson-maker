@@ -30,6 +30,12 @@ export function createStore(initialState) {
   const store = new Proxy(target, {
     set(obj, key, value) {
       if (Object.is(obj[key], value)) return true;
+      // Lock selection during split: only the pre-selected region may stay selected
+      if (key === 'activeSelectedLayer' && obj.splitModeActive && obj._splitLockedLayer) {
+        if (value && value !== obj._splitLockedLayer) {
+          return true;
+        }
+      }
       obj[key] = value;
       scheduleNotify();
       return true;

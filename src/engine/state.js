@@ -11,6 +11,9 @@ const initialState = {
   map: undefined,
   drawnItems: undefined,
   autoCutSeaEnabled: false,
+  // Cut Sea "no islands" mode: keep only the largest landmass (mainland) and
+  // drop every secondary piece instead of uniting them into one MultiPolygon.
+  cutSeaNoIslands: false,
   baseTileLayers: {},
   borderOverlays: {},
   activeBaseKey: 'dark',
@@ -38,6 +41,11 @@ const initialState = {
   nudgeUnit: 'percent',
   nudgeKeysEnabled: true,
   splitModeActive: false,
+  splitDeleteMode: false,
+  // Which blade is being drawn: 'line' (severs across) or 'polygon' (a closed
+  // region — inside/outside of the drawn ring decides the cut).
+  splitTool: 'line',
+  _splitLockedLayer: null,
   countryLayers: [],
   countryLayerById: {},
   countriesIndexCache: {},

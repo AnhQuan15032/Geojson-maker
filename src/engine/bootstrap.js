@@ -21,6 +21,7 @@ import {
   toggleMergeCandidate,
   toggleMergeMode,
   triggerCutSeaNow,
+  updateCutSeaNoIslandsUI,
   updateMergeModeUI,
 } from './merge.js';
 import {
@@ -37,7 +38,7 @@ import {
 import { loadNudgeConfig, nudgeImage } from './overlayImage.js';
 import { duplicateSelectedShape, fitAllShapes, toggleShortcutSheet, updateStats, zoomToSelection } from './quickTools.js';
 import { cancelSeaPick } from './seaDetect.js';
-import { executeSplitWithLine, setSplitStatus } from './split.js';
+import { executeSplitWithLine, executeSplitWithPolygon, setSplitStatus } from './split.js';
 import { openStyleDrawerForActive, populateStyleDrawer } from './styleInspector.js';
 import {
   endTutorial,
@@ -69,6 +70,7 @@ export function startEngine() {
   updateDeleteModeUI();
   updateMergeModeUI();
   updateSnappingUI();
+  updateCutSeaNoIslandsUI();
   initMobileAppShell();
   updateHistoryButtons();
   initGuiSettings();
@@ -136,6 +138,19 @@ export function startEngine() {
       S.selectOnMapMode = false;
       updateSelectOnMapUI();
       showToast('Select-on-map disabled');
+      return;
+    }
+    if (S.splitModeActive && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      S.splitModeActive = false;
+      S.splitDeleteMode = false;
+      S.splitTool = 'line';
+      S._splitLockedLayer = null;
+      if (S.map && S.map.pm.globalDrawModeEnabled && S.map.pm.globalDrawModeEnabled()) S.map.pm.disableDraw();
+      if (S.map) S.map.getContainer().style.cursor = '';
+      setSplitStatus('idle');
+      showToast('Split cancelled');
       return;
     }
     if (S.seaPickMode && e.key === 'Escape') {
@@ -387,9 +402,22 @@ export function initMap() {
     // Split mode: the drawn line is a blade, not a shape
     if (S.splitModeActive && layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
       S.drawnItems.removeLayer(layer);
+      const wasDelete = !!S.splitDeleteMode;
+      // keep flags for executeSplitWithLine to read, then clear cursor/active after
       S.splitModeActive = false;
+      // S.splitDeleteMode is cleared inside executeSplitWithLine after reading wasDelete
       setSplitStatus('splitting…', 'busy');
-      executeSplitWithLine(layer.getLatLngs());
+      executeSplitWithLine(layer.getLatLngs(), wasDelete);
+      return;
+    }
+    // Polygon-blade split mode: the drawn ring is the cut region, not a shape
+    if (S.splitModeActive && S.splitTool === 'polygon' && layer instanceof L.Polygon) {
+      S.drawnItems.removeLayer(layer);
+      const wasDelete = !!S.splitDeleteMode;
+      S.splitModeActive = false;
+      // S.splitDeleteMode / S.splitTool are reset inside executeSplitWithPolygon
+      setSplitStatus('splitting…', 'busy');
+      executeSplitWithPolygon(layer.getLatLngs(), wasDelete);
       return;
     }
     cleanupDrawCurveGhost();
@@ -420,6 +448,7 @@ export function initMap() {
       curveLayerAllEdges(layer, S.drawCurveAmount);
     }
     layer.on('click', () => {
+      if (S.splitModeActive) return;
       S.activeSelectedLayer = layer;
       populateStyleDrawer(layer);
       onFeatureClick(layer);
@@ -468,6 +497,10 @@ export function initMap() {
     clearDrawingPointLabels();
     if (S.splitModeActive) {
       S.splitModeActive = false;
+      S.splitDeleteMode = false;
+      S.splitTool = 'line';
+      S._splitLockedLayer = null;
+      if (S.map) S.map.getContainer().style.cursor = '';
       setSplitStatus('idle');
       showToast('Split cancelled');
     }

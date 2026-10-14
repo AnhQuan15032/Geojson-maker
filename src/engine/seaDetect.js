@@ -565,6 +565,7 @@ export function addDetectedCoastAsShapes() {
   layer.feature.properties.fill = '#f0abfc';
   layer.feature.properties['stroke-width'] = 2;
   layer.on('click', () => {
+    if (S.splitModeActive) return;
     S.activeSelectedLayer = layer;
     populateStyleDrawer(layer);
     onFeatureClick(layer);

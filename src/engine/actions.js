@@ -74,13 +74,16 @@ import {
   applySingleColorToAll,
   clearMergeSelection,
   cutSeaFromPolygon,
+  cutSeaNoIslandsNow,
   executeMerge,
   mergeAllLoadedUnits,
   mergeAllTouching,
   removeLoadedCountries,
   toggleAutoSeaCut,
+  toggleCutSeaNoIslands,
   toggleMergeMode,
   triggerCutSeaNow,
+  updateCutSeaNoIslandsUI,
 } from './merge.js';
 import {
   setSnapDistance,
@@ -131,7 +134,11 @@ import {
 } from './seaDetect.js';
 import {
   cancelSplitMode,
+  executeSplitWithPolygon,
+  startSplitAndDeleteMode,
   startSplitMode,
+  startSplitPolygonAndDeleteMode,
+  startSplitPolygonMode,
 } from './split.js';
 import {
   openStyleDrawerForActive,
@@ -154,11 +161,9 @@ import {
 } from './tutorial.js';
 import {
   closeDrawers,
-  openAuthModal,
   openUploadCreationModal,
   showToast,
   toggleDrawer,
-  toggleMapLegend,
 } from './uiHelpers.js';
 
 const actions = {
@@ -173,17 +178,17 @@ const actions = {
   bakePolygonsIntoMap,
   boostCoastDetail,
   cancelSplitMode,
+  startSplitAndDeleteMode,
   clearDetectedCoastPreview,
   clearMergeSelection,
   clearOsmCoastline,
   closeDrawers,
   copyGeoJSONToClipboard,
-  openAuthModal,
   openUploadCreationModal,
   showToast,
-  toggleMapLegend,
   curveAllEdges,
   cutSeaFromPolygon,
+  cutSeaNoIslandsNow,
   deleteSelectedLoaded,
   deleteSelectedOrLast,
   detectCoastlineFromSeaColor,
@@ -196,6 +201,7 @@ const actions = {
   endTutorial,
   ensureCountryIndex,
   executeMerge,
+  executeSplitWithPolygon,
   expandTutorial,
   fetchFastCoastTiles,
   fetchOsmCoastlineAction,
@@ -237,12 +243,16 @@ const actions = {
   setSnappingEnabled,
   simplifySelectedCoast,
   snapSelectionToOsmCoast,
+  startSplitAndDeleteMode,
   startSplitMode,
+  startSplitPolygonAndDeleteMode,
+  startSplitPolygonMode,
   startTutorial,
   straightenAllEdges,
   toggleAspectRatioLock,
   toggleAutoSeaCut,
   toggleBorderOverlay,
+  toggleCutSeaNoIslands,
   toggleCurveEdgeMode,
   toggleDeleteMode,
   toggleDrawer,
@@ -265,6 +275,7 @@ const actions = {
   undoHistory,
   updateActiveFeatureProp,
   updateActiveStyle,
+  updateCutSeaNoIslandsUI,
   zoomToSelection,
 };
 

@@ -10,9 +10,22 @@ import { populateStyleDrawer } from './styleInspector.js';
 import { showToast } from './uiHelpers.js';
 
 // ================= GEOJSON LOADER =================
-export function importGeoJSONFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+export function importGeoJSONFile(eOrFile) {
+  // storage deleted — allow both event (input change) and direct File
+  let file = null;
+  if (eOrFile && eOrFile.target && eOrFile.target.files) file = eOrFile.target.files[0];
+  else if (eOrFile instanceof File) file = eOrFile;
+  else if (Array.isArray(eOrFile) && eOrFile[0] instanceof File) file = eOrFile[0];
+  else if (eOrFile && eOrFile.files) file = eOrFile.files[0];
+  // also support being called with no args -> open picker
+  if (!file) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.geojson,.json,application/geo+json,application/json';
+    input.onchange = ev => importGeoJSONFile(ev);
+    input.click();
+    return;
+  }
   const reader = new FileReader();
   reader.onload = event => {
     try {
@@ -53,6 +66,7 @@ export function loadGeoDataObject(geoObj) {
     onEachFeature: (feature, layer) => {
       setupLayerProperties(layer);
       layer.on('click', () => {
+    if (S.splitModeActive) return;
         S.activeSelectedLayer = layer;
         populateStyleDrawer(layer);
         onFeatureClick(layer);

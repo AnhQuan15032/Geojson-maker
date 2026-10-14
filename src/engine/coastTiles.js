@@ -308,7 +308,7 @@ export async function runTilePass(pattern, plan, totalTiles, sink) {
             rings.forEach(rg => {
               let ll = rg.map(p => tileToLngLat(t.x, t.y, t.z, p[0], p[1], water.extent));
               if (ll.length < 4) return;
-              if (window.turf) {
+              if ((turf || (typeof window !== "undefined" ? window.turf : null))) {
                 try {
                   const s = turf.simplify(turf.lineString(ll), {
                     tolerance: tolDeg,
@@ -360,7 +360,7 @@ export async function runTilePass(pattern, plan, totalTiles, sink) {
 // the dissolved rings — seam-free, continuous, actual OSM geometry.
 
 export async function dissolveOceanFeatures(list) {
-  if (!window.turf || list.length === 0) return list || [];
+  if (!(turf || (typeof window !== "undefined" ? window.turf : null)) || list.length === 0) return list || [];
   const sorted = list.slice().sort((a, b) => bboxArea(b.bbox) - bboxArea(a.bbox));
   const groups = [];
   const COORD_CAP = 60000; // stop merging a group once it gets huge
@@ -544,7 +544,7 @@ export async function simplifySelectedCoast() {
     return;
   }
   await ensureHeavyLibs();
-  if (!window.turf) {
+  if (!(turf || (typeof window !== "undefined" ? window.turf : null))) {
     showToast('Turf unavailable');
     return;
   }
@@ -689,7 +689,7 @@ export function coastFeature(line) {
 }
 
 export function nearestOnOsm(lng, lat, cosLat, tolMeters) {
-  if (!window.turf) return null;
+  if (!(turf || (typeof window !== "undefined" ? window.turf : null))) return null;
   const pt = turf.point([lng, lat]);
   const mLng = tolMeters / 111320 / Math.max(cosLat, 0.15) + 0.0005;
   const mLat = tolMeters / 111320 + 0.0005;

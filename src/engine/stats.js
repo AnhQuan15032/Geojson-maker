@@ -36,7 +36,7 @@ export function runHeavyStats() {
   } else {
     if (ta) ta.value = JSON.stringify(data, null, 2);
     let totalArea = 0;
-    if (window.turf) {
+    if ((turf || (typeof window !== "undefined" ? window.turf : null))) {
       data.features.forEach(f => {
         if (f.geometry && f.geometry.type.includes('Polygon')) {
           try {

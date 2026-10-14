@@ -81,6 +81,17 @@ export function AppHeader() {
             </b>
           </span>
         </button>
+        {/* Cut Sea islands — OFF means no-islands mode (mainland only) */}
+        <button onClick={() => { actions.toggleCutSeaNoIslands() }} id="btn-islands-header" title="Cut Sea islands: ON unites mainland & islands in one region, OFF keeps the mainland only" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" id="indicator-islands-header"></span>
+          <Icon name="waves" className="w-3.5 h-3.5 text-cyan-400" />
+          <span>
+            {'Islands: '}
+            <b id="text-islands-header" className="text-emerald-400">
+              ON
+            </b>
+          </span>
+        </button>
         {/* Latitude-Longitude Grid Alignment Overlay */}
         <button onClick={() => { actions.toggleLatLngGrid() }} id="btn-grid-header" title="Toggle Latitude-Longitude alignment grid overlay" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
           <span className="w-2 h-2 rounded-full bg-slate-500" id="indicator-grid-header"></span>
@@ -92,39 +103,16 @@ export function AppHeader() {
             </b>
           </span>
         </button>
-        {/* Map Legend Toggle */}
-        <button onClick={() => { toggleMapLegend() }} id="btn-legend-header" title="Toggle Map Legend" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
-          <Icon name="layers-3" className="w-3.5 h-3.5 text-emerald-400" />
+        {/* Load GeoJSON (no storage) */}
+        <button onClick={() => { actions.importGeoJSONFile(); }} id="btn-upload-header" title="Load a GeoJSON file from your device" className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3 py-1.5 rounded-full shadow-lg shadow-emerald-900/40 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition">
+          <Icon name="file-up" className="w-3.5 h-3.5" />
           <span>
-            {'Legend '}
-            <b id="badge-legend-count-header" className="text-emerald-300 font-mono text-[10px]">
-              0
-            </b>
+            Load file
           </span>
         </button>
-        {/* Community Creations Explorer */}
-        <button onClick={() => { actions.toggleDrawer('creations-drawer') }} id="btn-creations-header" title="Explore Community Creations" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 flex items-center gap-1.5 active:scale-95 transition">
-          <Icon name="compass" className="w-3.5 h-3.5 text-amber-400" />
-          <span>
-            Community
-          </span>
-          <span id="badge-creations-count-header" className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold">
-            2
-          </span>
-        </button>
-        {/* Upload Creation */}
-        <button onClick={() => { openUploadCreationModal() }} id="btn-upload-header" title="Upload and publish creation with preview" className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3 py-1.5 rounded-full shadow-lg shadow-emerald-900/40 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition">
-          <Icon name="cloud-upload" className="w-3.5 h-3.5" />
-          <span>
-            Upload
-          </span>
-        </button>
-        {/* User Auth (Google & Discord) */}
-        <button onClick={() => { openAuthModal() }} id="btn-auth-header" title="Sign In with Google or Discord" className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-700/60 text-xs font-medium text-slate-300 hover:text-white flex items-center gap-1.5 active:scale-95 transition">
-          <Icon name="user" className="w-3.5 h-3.5 text-sky-400" />
-          <span id="text-auth-user">
-            Sign In
-          </span>
+        {/* Changelog */}
+        <button onClick={() => { actions.toggleDrawer('changelog-drawer') }} title="Changelog" aria-label="Changelog" className="bg-slate-900/90 backdrop-blur-md p-2 rounded-full shadow-lg border border-slate-700/60 text-slate-200 hover:text-sky-300 active:scale-95 transition">
+          <Icon name="scroll-text" className="w-4 h-4" />
         </button>
         {/* Settings & Appearance */}
         <button onClick={() => { actions.toggleDrawer('settings-drawer') }} title="Settings, Theme & Layout" aria-label="Settings" className="bg-slate-900/90 backdrop-blur-md p-2 rounded-full shadow-lg border border-slate-700/60 text-slate-200 hover:text-emerald-300 active:scale-95 transition">

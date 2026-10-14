@@ -193,6 +193,7 @@ export function addOsmCoastAsShape() {
   layer.feature.properties.fill = '#22d3ee';
   layer.feature.properties['stroke-width'] = 2;
   layer.on('click', () => {
+    if (S.splitModeActive) return;
     S.activeSelectedLayer = layer;
     populateStyleDrawer(layer);
     onFeatureClick(layer);

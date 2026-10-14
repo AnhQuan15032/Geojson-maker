@@ -35,9 +35,11 @@ html, body {
     .sheet-drawer {
       transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
       transform: translateY(100%);
+      pointer-events: none;
     }
     .sheet-drawer.open {
       transform: translateY(0%);
+      pointer-events: auto;
     }
     .leaflet-pm-toolbar {
       display: none !important;
@@ -210,17 +212,9 @@ html, body {
       animation: tourPulse 1.5s ease-in-out infinite;
     }
 
-    /* ================= MAP LEGEND & CREATIONS ================= */
-    #map-legend-container {
-      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    #map-legend-container.collapsed #legend-body {
-      display: none !important;
-    }
-    #map-legend-container.collapsed {
-      width: auto !important;
-      min-width: 0 !important;
-    }
+    /* ================= SCROLLBARS ================= */
+    /* (Map Legend + Discover/Creations panels were removed — continents now
+       live in the Map panel, see #layers-drawer below) */
     .custom-scrollbar::-webkit-scrollbar {
       width: 4px;
     }
@@ -372,11 +366,20 @@ html, body {
         background: linear-gradient(145deg, #10b981, #0d9488);
         border: 3px solid rgb(15 23 42);
         box-shadow: 0 14px 28px rgba(5, 150, 105, 0.42);
+        transform: translateY(-2px);
+        transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
       }
+      .mobile-draw-action:active { transform: translateY(-2px) scale(0.94); }
       .mobile-draw-action.is-active {
         background: linear-gradient(145deg, #34d399, #14b8a6);
+        box-shadow: 0 16px 32px rgba(16, 185, 129, 0.5);
       }
       .mobile-draw-action::after { display: none; }
+
+      /* upgraded: topbar overflow menu */
+      #mobile-app-header > div + div + div {
+        pointer-events: auto;
+      }
 
       #sheet-backdrop {
         position: fixed;
@@ -633,7 +636,22 @@ html, body {
       }
       .sheet-drawer.open {
         transform: translateX(0);
+        pointer-events: auto;
+      }
+      .sheet-drawer:not(.open) {
+        pointer-events: none;
       }
       /* Give desktop panels room to breathe */
       #map { width: 100vw; }
+    }
+
+    /* Fix: ensure Load buttons inside the Map panel (continents + countries) are
+       always clickable — even during transitions or on touch */
+    #layers-drawer button {
+      pointer-events: auto !important;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #layers-drawer .sheet-drawer.open {
+      pointer-events: auto;
     }
