@@ -8,6 +8,7 @@ export const CHANGELOG = [
       'New Split & Delete Polygon — the area you draw is erased and the remainder survives, like a cookie-cutter eraser',
       'Both polygon tools honour the existing lock: only the pre-selected region can be cut, and selection cannot change mid-draw',
       'Robustness — sliver/empty pieces are ignored, unclosed rings are closed, self-intersecting blades are rejected, and a UI refresh error can no longer report a successful cut as failed',
+      'Fixed a shape-loss case — a blade that only touches the edge is now a clean no-op instead of removing the shape mid-cut',
     ],
   },
   {

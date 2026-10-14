@@ -12,7 +12,8 @@ All notable changes to GeoJSON Studio are documented here.
 - **Tests** — `src/__tests__/split-polygon.test.js` (6 cases, real Leaflet map + real turf): inside/outside split with area conservation, delete-mode erasure, non-overlapping blade is a no-op, fully-covering blade removes the shape, unclosed rings are closed, and only the pre-selected region is ever cut.
 
 ### Fixed
-- **Sliver pieces** — a blade that only grazes an edge no longer creates zero-area shapes (`turf.area > 1 m²` required on both sides).
+- **Sliver pieces** — a blade that only grazes an edge no longer creates zero-area shapes (`turf.area > 1 m²` required).
+- **No shape loss on a grazing blade** — the cut now requires a real *inside* piece before the original is removed. Previously a blade that merely touched the shape's edge (overlapping bbox, zero-area intersection) removed the original and then threw while building the empty piece, silently destroying the shape; it is now a clean no-op. Covered by two regression tests in `split-polygon.test.js`.
 - **`populateStyleDrawer` crash** — it assumed `#no-region-selected` / `#style-editor-controls` / `#style-prop-name` / `#style-fill-color*` always exist and threw `TypeError: Cannot read properties of null` when the style drawer was not mounted; every lookup is now guarded and it bails quietly when unmounted. This also protects the existing line-split path.
 - **Post-split UI refresh** — wrapped in its own `try/catch` so a UI hiccup can no longer report a completed cut as `Polygon split failed`.
 

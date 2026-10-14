@@ -464,7 +464,10 @@ export async function executeSplitWithPolygon(latlngs, forceDeleteFlag) {
     S.splitTool = 'line';
     if (S.map) S.map.getContainer().style.cursor = '';
 
-    if (!hasInside && !hasOutside) {
+    // A meaningful cut requires a real inside piece. Without one the blade only
+    // grazed an edge — bail out BEFORE touching the original, so a failed cut
+    // can never destroy the shape.
+    if (!hasInside) {
       S._splitLockedLayer = null;
       S.splitDeleteMode = false;
       setSplitStatus('no overlap', null);

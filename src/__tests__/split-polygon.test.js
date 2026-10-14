@@ -35,6 +35,16 @@ const FAR_AWAY = [
   [11, 10],
 ];
 
+// Blade that only TOUCHES the square's west edge (lng -0.13) without overlapping
+// it — bbox overlaps, but the intersection has no area. This is the dangerous
+// case: the shape must survive untouched rather than be removed mid-cut.
+const TOUCHING_EDGE = [
+  [51.48, -0.15],
+  [51.48, -0.13],
+  [51.52, -0.13],
+  [51.52, -0.15],
+];
+
 const ring = pts => pts.map(([lat, lng]) => L.latLng(lat, lng));
 
 function totalArea(layers) {
@@ -130,6 +140,31 @@ describe('polygon blade split', () => {
     expect(S.drawnItems.getLayers(), 'nothing was cut').toEqual([original]);
     expect(S.drawnItems.hasLayer(original)).toBe(true);
     expect(S._splitLockedLayer, 'lock released after a no-op').toBe(null);
+  });
+
+  it('keeps the shape intact when the blade only touches its edge (no area lost)', async () => {
+    await import('../engine/heavyLibs.js').then(m => m.ensureHeavyLibs());
+    const original = freshSquare('Edge Toucher');
+    const before = totalArea([original]);
+
+    await executeSplitWithPolygon([ring(TOUCHING_EDGE)], false);
+
+    // Regression: the original used to be removed before the (empty) inside
+    // piece was built, so a grazing blade silently destroyed the shape.
+    expect(S.drawnItems.getLayers(), 'shape untouched').toEqual([original]);
+    expect(S.drawnItems.hasLayer(original)).toBe(true);
+    expect(totalArea([original]), 'no area lost').toBeCloseTo(before, 6);
+    expect(S._splitLockedLayer).toBe(null);
+  });
+
+  it('keeps the shape intact when a touching-edge blade is used in delete mode', async () => {
+    await import('../engine/heavyLibs.js').then(m => m.ensureHeavyLibs());
+    const original = freshSquare();
+
+    await executeSplitWithPolygon([ring(TOUCHING_EDGE)], true);
+
+    expect(S.drawnItems.getLayers(), 'nothing erased').toEqual([original]);
+    expect(S.drawnItems.hasLayer(original)).toBe(true);
   });
 
   it('removes the shape entirely when the blade covers all of it in delete mode', async () => {
