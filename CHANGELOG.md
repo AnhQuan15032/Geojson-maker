@@ -2,6 +2,20 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.2.6] — 2026-10-14 — Draw Split Polygon + Split & Delete Polygon
+
+### Added
+- **Draw Split Polygon** — `startSplitPolygonMode()` enables a Geoman **Polygon** blade (violet, dashed preview) instead of a line. `executeSplitWithPolygon()` closes the ring, then cuts the locked shape with `turf.intersect` (part **inside** the ring) and `turf.difference` (part **outside**). Both pieces are added as editable shapes named `Region (inside)` / `Region (outside)`, each with its own colour.
+- **Split & Delete Polygon** — `startSplitPolygonAndDeleteMode()` draws the same ring but erases it: only the `difference` remainder survives as `Region (trimmed)`. If the blade covers the whole shape, the shape is removed entirely.
+- **State** — `S.splitTool` (`'line'` | `'polygon'`) selects which blade `pm:create` routes to; it is reset to `'line'` on cancel, `Escape`, `pm:drawend` and after every execution.
+- **UI** — the Draw panel's split section now has two labelled rows: *Line blade* (`Draw Split Line`, `Split & Delete`) and *Polygon blade* (`Draw Split Polygon`, `Split & Delete Polygon`), with the shared **Stop / Cancel** button and the locked-to-selected banner unchanged.
+- **Tests** — `src/__tests__/split-polygon.test.js` (6 cases, real Leaflet map + real turf): inside/outside split with area conservation, delete-mode erasure, non-overlapping blade is a no-op, fully-covering blade removes the shape, unclosed rings are closed, and only the pre-selected region is ever cut.
+
+### Fixed
+- **Sliver pieces** — a blade that only grazes an edge no longer creates zero-area shapes (`turf.area > 1 m²` required on both sides).
+- **`populateStyleDrawer` crash** — it assumed `#no-region-selected` / `#style-editor-controls` / `#style-prop-name` / `#style-fill-color*` always exist and threw `TypeError: Cannot read properties of null` when the style drawer was not mounted; every lookup is now guarded and it bails quietly when unmounted. This also protects the existing line-split path.
+- **Post-split UI refresh** — wrapped in its own `try/catch` so a UI hiccup can no longer report a completed cut as `Polygon split failed`.
+
 ## [1.2.5] — 2026-10-14 — Simpler UI: Explorer, logins & legends removed
 
 ### Removed

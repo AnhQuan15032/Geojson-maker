@@ -1,5 +1,16 @@
 export const CHANGELOG = [
   {
+    version: '1.2.6',
+    date: '2026-10-14',
+    title: 'Draw Split Polygon + Split & Delete Polygon',
+    changes: [
+      'New polygon blade — draw a closed ring over the selected shape and it is cut into the part inside your ring and the part outside (two editable shapes)',
+      'New Split & Delete Polygon — the area you draw is erased and the remainder survives, like a cookie-cutter eraser',
+      'Both polygon tools honour the existing lock: only the pre-selected region can be cut, and selection cannot change mid-draw',
+      'Robustness — sliver/empty pieces are ignored, unclosed rings are closed, self-intersecting blades are rejected, and a UI refresh error can no longer report a successful cut as failed',
+    ],
+  },
+  {
     version: '1.2.5',
     date: '2026-10-14',
     title: 'Simpler UI — Explorer, logins & legends removed',

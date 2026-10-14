@@ -37,7 +37,7 @@ import {
 import { loadNudgeConfig, nudgeImage } from './overlayImage.js';
 import { duplicateSelectedShape, fitAllShapes, toggleShortcutSheet, updateStats, zoomToSelection } from './quickTools.js';
 import { cancelSeaPick } from './seaDetect.js';
-import { executeSplitWithLine, setSplitStatus } from './split.js';
+import { executeSplitWithLine, executeSplitWithPolygon, setSplitStatus } from './split.js';
 import { openStyleDrawerForActive, populateStyleDrawer } from './styleInspector.js';
 import {
   endTutorial,
@@ -143,6 +143,7 @@ export function startEngine() {
       e.stopPropagation();
       S.splitModeActive = false;
       S.splitDeleteMode = false;
+      S.splitTool = 'line';
       S._splitLockedLayer = null;
       if (S.map && S.map.pm.globalDrawModeEnabled && S.map.pm.globalDrawModeEnabled()) S.map.pm.disableDraw();
       if (S.map) S.map.getContainer().style.cursor = '';
@@ -407,6 +408,16 @@ export function initMap() {
       executeSplitWithLine(layer.getLatLngs(), wasDelete);
       return;
     }
+    // Polygon-blade split mode: the drawn ring is the cut region, not a shape
+    if (S.splitModeActive && S.splitTool === 'polygon' && layer instanceof L.Polygon) {
+      S.drawnItems.removeLayer(layer);
+      const wasDelete = !!S.splitDeleteMode;
+      S.splitModeActive = false;
+      // S.splitDeleteMode / S.splitTool are reset inside executeSplitWithPolygon
+      setSplitStatus('splitting…', 'busy');
+      executeSplitWithPolygon(layer.getLatLngs(), wasDelete);
+      return;
+    }
     cleanupDrawCurveGhost();
     const c = nextUniqueColor();
     if (layer instanceof L.Polygon) {
@@ -485,6 +496,7 @@ export function initMap() {
     if (S.splitModeActive) {
       S.splitModeActive = false;
       S.splitDeleteMode = false;
+      S.splitTool = 'line';
       S._splitLockedLayer = null;
       if (S.map) S.map.getContainer().style.cursor = '';
       setSplitStatus('idle');

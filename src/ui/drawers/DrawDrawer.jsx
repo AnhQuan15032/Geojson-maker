@@ -181,12 +181,13 @@ export function DrawDrawer() {
           {' Curve the selected shape now '}
         </button>
       </div>
-      {/* SPLIT SHAPE WITH A LINE */}
+      {/* SPLIT SHAPE — LINE OR POLYGON BLADE */}
       <div className="bg-slate-800/80 p-3 rounded-2xl border border-rose-700/50 space-y-2.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
             <Icon name="split" className="w-3.5 h-3.5 text-rose-400" />
-            {' Split Shape With A Line '}
+            {' Split Shape '}
+            <span className="text-[9px] font-mono text-slate-500">line / polygon</span>
           </span>
           <span id="split-status" className="text-[10px] font-mono text-slate-400">
             idle
@@ -211,6 +212,10 @@ export function DrawDrawer() {
           <Icon name="info" className="w-3 h-3 shrink-0" />
           {' Select a shape first on the map, then press a split button. Selection is locked while drawing.'}
         </p>
+        <div className="text-[9px] font-black tracking-widest uppercase text-rose-300/80 flex items-center gap-1.5">
+          <Icon name="split" className="w-3 h-3" />
+          {' Line blade '}
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => { actions.startSplitMode() }} id="btn-split" className="p-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition">
             <Icon name="split" className="w-4 h-4" />
@@ -221,6 +226,35 @@ export function DrawDrawer() {
             {' Split & Delete '}
           </button>
         </div>
+        <div className="text-[9px] font-black tracking-widest uppercase text-violet-300/80 flex items-center gap-1.5 pt-1">
+          <Icon name="pentagon" className="w-3 h-3" />
+          {' Polygon blade '}
+        </div>
+        <p className="text-[10px] text-slate-400 leading-relaxed">
+          {' Or draw a '}
+          <b className="text-slate-200">
+            closed polygon
+          </b>
+          {' over the selected shape — it is cut into the part '}
+          <b className="text-violet-300">
+            inside
+          </b>
+          {' your ring and the part '}
+          <b className="text-violet-300">
+            outside
+          </b>
+          {'. Click point by point, then click the first point to close it. '}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => { actions.startSplitPolygonMode() }} id="btn-split-polygon" className="p-3 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition">
+            <Icon name="pentagon" className="w-4 h-4" />
+            {' Draw Split Polygon '}
+          </button>
+          <button onClick={() => { actions.startSplitPolygonAndDeleteMode() }} id="btn-split-polygon-delete" className="p-3 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition">
+            <Icon name="eraser" className="w-4 h-4" />
+            {' Split & Delete Polygon '}
+          </button>
+        </div>
         <div className="grid grid-cols-1 gap-2">
           <button onClick={() => { actions.cancelSplitMode() }} className="p-2.5 bg-slate-700 hover:bg-slate-600 rounded-xl text-[11px] font-bold text-slate-200 flex items-center justify-center gap-1.5 active:scale-95 transition">
             <Icon name="x" className="w-3.5 h-3.5" />
@@ -228,7 +262,10 @@ export function DrawDrawer() {
           </button>
         </div>
         <p className="text-[10px] text-slate-500 leading-relaxed">
-          <b className="text-amber-300">Split & Delete:</b> same blade, but the smaller half is automatically removed — useful to trim / erase part of a shape.
+          <b className="text-amber-300">Split & Delete (line):</b> same blade, but the smaller half is automatically removed — useful to trim / erase part of a shape.
+        </p>
+        <p className="text-[10px] text-slate-500 leading-relaxed">
+          <b className="text-fuchsia-300">Split & Delete (polygon):</b> the area you draw is erased and the rest stays — like a cookie-cutter eraser.
         </p>
       </div>
       {/* MERGE REGIONS INTO ONE */}

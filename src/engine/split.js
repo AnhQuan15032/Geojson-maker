@@ -51,27 +51,46 @@ function startSplitDraw(opts) {
   exitCurveEdgeMode();
   if (S.map.pm && S.map.pm.disableGlobalEditMode) S.map.pm.disableGlobalEditMode();
   S.splitModeActive = true;
+  // Which blade we are drawing — a line severs across the shape, a polygon
+  // marks a closed region whose inside/outside decides the cut.
+  const shape = opts.tool === 'Polygon' ? 'Polygon' : 'Line';
+  S.splitTool = shape === 'Polygon' ? 'polygon' : 'line';
   S._splitLockedLayer = S.activeSelectedLayer;
   setSplitStatus('drawing…', 'busy');
   if (S.map) S.map.getContainer().style.cursor = 'crosshair';
-  S.map.pm.enableDraw('Line', {
-    finishOn: 'dblclick',
+  const color = opts.color || '#f43f5e';
+  const drawOpts = {
     snappable: S.snappingEnabled,
     snapDistance: S.snappingDistance,
     snapSegment: S.snappingEnabled && S.snapToEdges,
     snapVertex: S.snappingEnabled && S.snapToVertices,
     snapMiddle: S.snappingEnabled && S.snapToMidpoints,
     templineStyle: {
-      color: opts.color || '#f43f5e',
+      color,
       weight: 3,
       dashArray: '6,4'
     },
     hintlineStyle: {
-      color: opts.color || '#f43f5e',
+      color,
       dashArray: '1,6',
       weight: 2
     }
-  });
+  };
+  if (shape === 'Line') {
+    drawOpts.finishOn = 'dblclick';
+  } else {
+    // Blade polygons are previews only — never persisted as shapes.
+    drawOpts.allowSelfIntersection = false;
+    drawOpts.pathOptions = {
+      color,
+      fillColor: color,
+      fillOpacity: 0.25,
+      weight: 2,
+      opacity: 1,
+      dashArray: '6,4'
+    };
+  }
+  S.map.pm.enableDraw(shape, drawOpts);
   showToast(opts.toast);
 }
 
@@ -94,9 +113,34 @@ export function startSplitAndDeleteMode() {
   setSplitStatus('drawing (delete)…', 'busy');
 }
 
+// ---- Polygon blade: draw a closed region over the selected shape ----
+// Inside the ring = one piece, outside the ring = the other. With delete on,
+// the drawn region is erased and only the remainder survives.
+export function startSplitPolygonMode() {
+  if (!ensureSelectedPolygonOrWarn()) return;
+  S.splitDeleteMode = false;
+  startSplitDraw({
+    tool: 'Polygon',
+    color: '#a855f7',
+    toast: 'Draw a polygon over the selected shape — click the first point to close it'
+  });
+}
+
+export function startSplitPolygonAndDeleteMode() {
+  if (!ensureSelectedPolygonOrWarn()) return;
+  S.splitDeleteMode = true;
+  startSplitDraw({
+    tool: 'Polygon',
+    color: '#c084fc',
+    toast: 'Split & delete polygon: draw the area to erase — click the first point to close'
+  });
+  setSplitStatus('drawing (delete)…', 'busy');
+}
+
 export function cancelSplitMode() {
   S.splitModeActive = false;
   S.splitDeleteMode = false;
+  S.splitTool = 'line';
   S._splitLockedLayer = null;
   setSplitStatus('idle');
   if (S.map && S.map.pm.globalDrawModeEnabled && S.map.pm.globalDrawModeEnabled()) S.map.pm.disableDraw();
@@ -352,11 +396,167 @@ export async function executeSplitWithLine(latlngs, forceDeleteFlag) {
   }
 }
 
+// ================= SPLIT SHAPE WITH A POLYGON =================
+// The drawn ring is a closed "blade" region: intersect() keeps the part inside
+// it, difference() keeps the part outside. Plain split hands you both pieces;
+// split & delete erases the drawn region and keeps only the remainder.
+export async function executeSplitWithPolygon(latlngs, forceDeleteFlag) {
+  const isDeleteMode = typeof forceDeleteFlag === 'boolean' ? forceDeleteFlag : !!S.splitDeleteMode;
+  try {
+    await ensureHeavyLibs();
+    const _turf = turf || (typeof window !== 'undefined' ? window.turf : null);
+    if (!_turf) throw new Error('Turf geometry engine unavailable (offline)');
+
+    // Geoman returns [outerRing, ...holes] for a polygon — the outer ring is the blade.
+    const ring = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+    const coords = ring.map(ll => [ll.lng, ll.lat]);
+    if (coords.length < 3) {
+      setSplitStatus('idle');
+      showToast('Draw at least 3 points to make a polygon blade');
+      return;
+    }
+    // Close the ring so turf accepts it as a polygon
+    const first = coords[0], last = coords[coords.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) coords.push([first[0], first[1]]);
+
+    let blade = null;
+    try {
+      blade = _turf.polygon([coords]);
+    } catch (e) {}
+    if (!blade) {
+      setSplitStatus('idle');
+      showToast('That polygon blade is invalid — avoid crossing its own edges');
+      return;
+    }
+
+    // Enforce: only the pre-selected region may be split — no switching during draw
+    const locked = S._splitLockedLayer && S.drawnItems.hasLayer(S._splitLockedLayer) ? S._splitLockedLayer : S.activeSelectedLayer;
+    if (!locked || !(locked instanceof L.Polygon) || !S.drawnItems.hasLayer(locked)) {
+      setSplitStatus('idle');
+      showToast('Select a polygon first before splitting');
+      return;
+    }
+
+    const areaOf = geometry => {
+      try {
+        return _turf.area({ type: 'Feature', properties: {}, geometry });
+      } catch (e) {
+        return 0;
+      }
+    };
+
+    await nextTick();
+    const poly = locked;
+    const polyGeo = poly.toGeoJSON();
+    const bladeBbox = _turf.bbox(blade);
+    const pb = _turf.bbox(polyGeo);
+    const bboxesOverlap = !(bladeBbox[0] > pb[2] || bladeBbox[2] < pb[0] || bladeBbox[1] > pb[3] || bladeBbox[3] < pb[1]);
+
+    let inside = null, outside = null;
+    if (bboxesOverlap) {
+      try { inside = _turf.intersect(polyGeo, blade); } catch (e) {}
+      try { outside = _turf.difference(polyGeo, blade); } catch (e) {}
+    }
+    // Ignore slivers: a blade that only grazes an edge must not create empty pieces
+    const hasInside = !!(inside && inside.geometry && areaOf(inside.geometry) > 1);
+    const hasOutside = !!(outside && outside.geometry && areaOf(outside.geometry) > 1);
+
+    S.splitTool = 'line';
+    if (S.map) S.map.getContainer().style.cursor = '';
+
+    if (!hasInside && !hasOutside) {
+      S._splitLockedLayer = null;
+      S.splitDeleteMode = false;
+      setSplitStatus('no overlap', null);
+      showToast('The drawn polygon did not overlap the selected shape — draw it across the area you want');
+      return;
+    }
+
+    const prevProps = poly.feature && poly.feature.properties || {};
+    const baseName = String(prevProps.name || 'Region').replace(/ \((A|B|inside|outside|trimmed)\)$/, '');
+    S.drawnItems.removeLayer(poly);
+
+    // Keep the country index in sync if this shape was a loaded country
+    Object.keys(S.countryLayerById).forEach(k => {
+      if (S.countryLayerById[k] === poly) delete S.countryLayerById[k];
+    });
+    const ci = S.countryLayers.indexOf(poly);
+    if (ci >= 0) S.countryLayers.splice(ci, 1);
+
+    let lastPiece = null;
+    let status = 'idle';
+    if (isDeleteMode) {
+      if (hasOutside) {
+        // The drawn region is gone; the remainder survives as one shape
+        lastPiece = addSplitPiece({
+          type: 'Feature',
+          properties: {},
+          geometry: outside.geometry
+        }, `${baseName} (trimmed)`, nextUniqueColor(), prevProps);
+        status = 'trimmed';
+        setSplitStatus(status, 'ok');
+        showToast('Split & delete complete — the drawn area was erased');
+      } else {
+        // The blade covered the entire shape — nothing left to keep
+        if (S.activeSelectedLayer === poly) {
+          S.activeSelectedLayer = null;
+          populateStyleDrawer(null);
+        }
+        status = 'removed';
+        setSplitStatus(status, 'ok');
+        showToast('The drawn area covered the whole shape — it was removed');
+      }
+    } else {
+      addSplitPiece({
+        type: 'Feature',
+        properties: {},
+        geometry: inside.geometry
+      }, `${baseName} (inside)`, nextUniqueColor(), prevProps);
+      if (hasOutside) {
+        lastPiece = addSplitPiece({
+          type: 'Feature',
+          properties: {},
+          geometry: outside.geometry
+        }, `${baseName} (outside)`, nextUniqueColor(), prevProps);
+      } else {
+        lastPiece = S.activeSelectedLayer;
+        showToast('The drawn polygon covered the whole shape — nothing to cut');
+      }
+      status = 'split';
+      setSplitStatus(status, 'ok');
+      if (hasOutside) showToast('Split complete — cut into inside / outside pieces');
+    }
+
+    S._splitLockedLayer = null;
+    S.splitDeleteMode = false;
+    // The cut already happened — a UI refresh hiccup must not report it as failed
+    try {
+      if (lastPiece) populateStyleDrawer(lastPiece);
+      updateStats();
+      updateCountriesUI();
+      renderCountryResults();
+    } catch (uiErr) {
+      console.warn('Post-split UI refresh failed:', uiErr);
+    }
+  } catch (err) {
+    console.warn('Polygon split failed:', err);
+    S._splitLockedLayer = null;
+    S.splitDeleteMode = false;
+    S.splitTool = 'line';
+    if (S.map) S.map.getContainer().style.cursor = '';
+    setSplitStatus('failed', null);
+    showToast('Polygon split failed: ' + err.message);
+  }
+}
+
 // ================= MAGNETIC EDGE & VERTEX SNAPPING ENGINE =================
 
 if (typeof window !== 'undefined') {
   window.startSplitMode = startSplitMode;
   window.startSplitAndDeleteMode = startSplitAndDeleteMode;
+  window.startSplitPolygonMode = startSplitPolygonMode;
+  window.startSplitPolygonAndDeleteMode = startSplitPolygonAndDeleteMode;
   window.cancelSplitMode = cancelSplitMode;
   window.executeSplitWithLine = executeSplitWithLine;
+  window.executeSplitWithPolygon = executeSplitWithPolygon;
 }

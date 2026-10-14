@@ -39,6 +39,9 @@ const initialState = {
   nudgeKeysEnabled: true,
   splitModeActive: false,
   splitDeleteMode: false,
+  // Which blade is being drawn: 'line' (severs across) or 'polygon' (a closed
+  // region — inside/outside of the drawn ring decides the cut).
+  splitTool: 'line',
   _splitLockedLayer: null,
   countryLayers: [],
   countryLayerById: {},

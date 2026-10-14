@@ -22,6 +22,12 @@ export function openStyleDrawerForActive() {
 export function populateStyleDrawer(layer) {
   const noSel = document.getElementById('no-region-selected');
   const controls = document.getElementById('style-editor-controls');
+  // The style drawer is not mounted (panel closed / engine running headless):
+  // nothing to populate, and a completed geometry op must never fail here.
+  if (!noSel || !controls) {
+    try { updateMobileSelectionBar(); } catch (e) {}
+    return;
+  }
   if (!layer) {
     noSel.classList.remove('hidden');
     controls.classList.add('hidden');
@@ -34,9 +40,12 @@ export function populateStyleDrawer(layer) {
   const opts = layer.options || {};
   const nameVal = props.name || `Region`;
   const fillVal = opts.fillColor || props.fill || opts.color || PREVIEW_COLOR;
-  document.getElementById('style-prop-name').value = nameVal;
-  document.getElementById('style-fill-color').value = rgbToHex(fillVal);
-  document.getElementById('style-fill-color-val').textContent = fillVal;
+  const nameEl = document.getElementById('style-prop-name');
+  if (nameEl) nameEl.value = nameVal;
+  const fillEl = document.getElementById('style-fill-color');
+  if (fillEl) fillEl.value = rgbToHex(fillVal);
+  const fillValEl = document.getElementById('style-fill-color-val');
+  if (fillValEl) fillValEl.textContent = fillVal;
 
   // ---- Curved edges panel (polygons only) ----
   const isPolygonLayer = layer instanceof L.Polygon;
@@ -72,7 +81,8 @@ export function updateActiveStyle(property, value) {
   if (!S.activeSelectedLayer.feature) setupLayerProperties(S.activeSelectedLayer);
   S.activeSelectedLayer.feature.properties.fill = value;
   if (isLine) S.activeSelectedLayer.feature.properties.stroke = value;
-  document.getElementById('style-fill-color-val').textContent = value;
+  const fillValEl = document.getElementById('style-fill-color-val');
+  if (fillValEl) fillValEl.textContent = value;
   updateStats();
 }
 

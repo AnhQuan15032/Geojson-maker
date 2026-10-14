@@ -131,8 +131,11 @@ import {
 } from './seaDetect.js';
 import {
   cancelSplitMode,
+  executeSplitWithPolygon,
   startSplitAndDeleteMode,
   startSplitMode,
+  startSplitPolygonAndDeleteMode,
+  startSplitPolygonMode,
 } from './split.js';
 import {
   openStyleDrawerForActive,
@@ -194,6 +197,7 @@ const actions = {
   endTutorial,
   ensureCountryIndex,
   executeMerge,
+  executeSplitWithPolygon,
   expandTutorial,
   fetchFastCoastTiles,
   fetchOsmCoastlineAction,
@@ -237,6 +241,8 @@ const actions = {
   snapSelectionToOsmCoast,
   startSplitAndDeleteMode,
   startSplitMode,
+  startSplitPolygonAndDeleteMode,
+  startSplitPolygonMode,
   startTutorial,
   straightenAllEdges,
   toggleAspectRatioLock,
