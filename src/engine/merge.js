@@ -4,6 +4,7 @@
 import L from 'leaflet';
 import { S } from './state.js';
 import { computeGeoBbox, yieldFrame } from '../lib/util.js';
+import { splitPolygonAtAntimeridian } from './antimeridian.js';
 import { applyShapeLockStyle } from './borderDetail.js';
 import { nextUniqueColor, setupLayerProperties } from './colors.js';
 import { LAND_SOURCES, PREVIEW_COLOR, curveStore } from './constants.js';
@@ -495,30 +496,28 @@ export function loadGlobalLandmass(level) {
       const landGeo = topojson.feature(topo, topo.objects.land);
       const list = [];
       const feats = landGeo.type === 'FeatureCollection' ? landGeo.features : [landGeo];
+      // world-atlas land is geostitched across ±180° — every polygon is cut at
+      // the antimeridian (usually a no-op) so no ring spans the whole map.
+      const pushPolygon = (coords, properties) => {
+        for (const part of splitPolygonAtAntimeridian(coords)) {
+          const poly = {
+            type: 'Feature',
+            properties: properties || {},
+            geometry: { type: 'Polygon', coordinates: part }
+          };
+          poly.bbox = computeGeoBbox(poly.geometry);
+          let count = 0;
+          part.forEach(r => count += r.length);
+          poly._isContinent = count > 3000;
+          list.push(poly);
+        }
+      };
       feats.forEach(f => {
         if (!f.geometry) return;
         if (f.geometry.type === 'MultiPolygon') {
-          f.geometry.coordinates.forEach(coords => {
-            const poly = {
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'Polygon',
-                coordinates: coords
-              }
-            };
-            poly.bbox = computeGeoBbox(poly.geometry);
-            let count = 0;
-            coords.forEach(r => count += r.length);
-            poly._isContinent = count > 3000;
-            list.push(poly);
-          });
+          f.geometry.coordinates.forEach(coords => pushPolygon(coords, {}));
         } else if (f.geometry.type === 'Polygon') {
-          f.bbox = computeGeoBbox(f.geometry);
-          let count = 0;
-          f.geometry.coordinates.forEach(r => count += r.length);
-          f._isContinent = count > 3000;
-          list.push(f);
+          pushPolygon(f.geometry.coordinates, f.properties);
         }
       });
       if (list.length === 0) throw new Error('No land features parsed');

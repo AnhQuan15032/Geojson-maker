@@ -7,6 +7,7 @@ import { computeGeoBbox, escapeXml, gridKey, nextTick, yieldFrame } from '../lib
 import { currentLoadMode } from './bootstrap.js';
 import { refineSelectionWithTilesCoast } from './coastTiles.js';
 import { nextUniqueColor, setupLayerProperties } from './colors.js';
+import { unstitchFeature } from './antimeridian.js';
 import { ADM1_SOURCES, GRID_CELL, adminMetaCache, curveStore } from './constants.js';
 import { exitCurveEdgeMode } from './curves.js';
 import { onFeatureClick } from './exporters/geojson.js';
@@ -102,7 +103,7 @@ export async function ensureAdm1Index() {
       const feats = fc.features.filter(f => f.geometry);
       const list = [];
       for (let i = 0; i < feats.length; i++) {
-        const f = feats[i];
+        const f = unstitchFeature(feats[i]);
         const p = f.properties || {};
         list.push({
           id: `a1-${i}`,
@@ -157,7 +158,9 @@ export async function ensureCountryIndex() {
       const feats = (fc.features || []).filter(f => f.geometry);
       const list = [];
       for (let i = 0; i < feats.length; i++) {
-        const f = feats[i];
+        // world-atlas is geostitched across ±180° (Russia, Fiji, Antarctica…);
+        // cut those rings at the antimeridian or Leaflet draws them as bands.
+        const f = unstitchFeature(feats[i]);
         list.push({
           id: f.id != null ? String(f.id) : `idx-${i}`,
           name: f.properties && f.properties.name || `Country ${i + 1}`,

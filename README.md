@@ -20,6 +20,20 @@ npm run check     # module-graph check + TDZ check + tests
 and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
 export. No sign-in, no storage, no cloud.
 
+## New in 1.3.1 — antimeridian fix
+
+Countries, provinces and the Cut Sea coastline that cross **±180°** (Russia,
+Fiji, Antarctica, …) are cut at the antimeridian as they load. The
+`world-atlas` TopoJSON is *geostitched* — a ring runs straight from 179.9°E to
+−180° — and Leaflet's flat world drew every such edge as a line across the
+entire map (the red bands over Russia at 65–69°N). `src/engine/antimeridian.js`
+unwraps each ring, closes polar rings through the pole, clips the polygon into
+360°-wide windows and shifts the pieces back; clean geometry is returned by
+reference. Applied in `ensureCountryIndex`, `ensureAdm1Index`,
+`loadGlobalLandmass`, `ensureWorldBorders` and `loadGeoDataObject`.
+Tests: `src/__tests__/antimeridian.test.js`,
+`src/__tests__/country-antimeridian.test.jsx`.
+
 ## New in 1.3.0 — Vector Auto-Animator
 
 Draw **shape 1**, draw **shape 2**, press **Animate** (rail button, mobile
@@ -277,12 +291,13 @@ the subtree while the Leaflet map stays bound to the detached first copy.
 
 `npm run check` runs three things:
 
-1. **module graph** — 75 source files, 680+ relative imports, every named
+1. **module graph** — 79 source files, 700+ relative imports, every named
    import resolves to a real export
 2. **TDZ** — no top-level initializer reads a binding from a module it is in an
    import cycle with
-3. **81 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
-   Alight Motion keyframes, animate user flow). The original three groups:
+3. **107 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
+   Alight Motion keyframes, animate user flow, antimeridian repair). The
+   original three groups:
    - *parity* — loads the original monolith into a `vm` sandbox and diffs it
      against the new modules on identical inputs: colour conversions, the SVG /
      KML / Alight Motion path builders, MVT decoding, the border roughener,

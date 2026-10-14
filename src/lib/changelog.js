@@ -1,5 +1,16 @@
 export const CHANGELOG = [
   {
+    version: '1.3.1',
+    date: '2026-10-14',
+    title: 'Fix — Russia drew as bands across the map (antimeridian)',
+    changes: [
+      'Countries and coastlines that cross ±180° (Russia, Fiji, Antarctica, the Cut Sea landmass) are now cut at the antimeridian when they load — no more horizontal bands across the whole world',
+      'Cause: the world-atlas data is stitched across the dateline (a ring jumps straight from 179.9°E to 180°W); a flat map draws that jump as a map-wide edge',
+      'Antarctica is filled again — it was stored as a pole cap with the coastline as a hole',
+      'Applied to the country index, provinces index, Cut Sea landmass, auto-georeference border mesh and GeoJSON import; shapes already drawn are unaffected',
+    ],
+  },
+  {
     version: '1.3.0',
     date: '2026-10-14',
     title: 'Vector Auto-Animator — morph shape 1 into shape 2',

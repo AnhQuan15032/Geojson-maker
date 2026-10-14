@@ -3,6 +3,7 @@
 
 import L from 'leaflet';
 import { S } from './state.js';
+import { unstitchFeature } from './antimeridian.js';
 import { nextUniqueColor, setupLayerProperties } from './colors.js';
 import { onFeatureClick } from './exporters/geojson.js';
 import { updateStats } from './quickTools.js';
@@ -39,8 +40,34 @@ export function importGeoJSONFile(eOrFile) {
   reader.readAsText(file);
 }
 
+// Cut any ring that was stitched across the antimeridian (e.g. GeoJSON exported
+// from TopoJSON sources) so it does not render as a band across the map.
+// Strict mode: only unmistakably geostitched rings are touched — shapes drawn
+// across the dateline on a neighbouring world copy, or a world-wide
+// background rectangle, load exactly as they were saved.
+const STRICT = { strict: true };
+export function repairGeoDataObject(geoObj) {
+  try {
+    if (!geoObj || typeof geoObj !== 'object') return geoObj;
+    if (geoObj.type === 'FeatureCollection' && Array.isArray(geoObj.features)) {
+      geoObj.features.forEach(f => unstitchFeature(f, STRICT));
+    } else if (geoObj.type === 'Feature') {
+      unstitchFeature(geoObj, STRICT);
+    } else if (geoObj.type === 'GeometryCollection' && Array.isArray(geoObj.geometries)) {
+      geoObj.geometries = geoObj.geometries.map(g => unstitchFeature({ type: 'Feature', geometry: g }, STRICT).geometry);
+    } else if (geoObj.coordinates) {
+      const fixed = unstitchFeature({ type: 'Feature', geometry: geoObj }, STRICT).geometry;
+      if (fixed !== geoObj) return fixed;
+    }
+  } catch (e) {
+    console.warn('Antimeridian repair skipped:', e);
+  }
+  return geoObj;
+}
+
 export function loadGeoDataObject(geoObj) {
   S.drawnItems.clearLayers();
+  geoObj = repairGeoDataObject(geoObj);
   const geoLayer = L.geoJSON(geoObj, {
     style: feature => {
       const p = feature && feature.properties || {};
