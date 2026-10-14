@@ -27,10 +27,11 @@ const initialState = {
   landCache: {},
   roughenSnapshot: null,
   roughenSeed: Math.floor(Math.random() * 1e9),
-  // Vector auto-animator (Animate panel): From/To polygon slots, timing
-  // options, the on-map preview ghost and the cached correspondence plan.
-  morphSourceLayer: null,
-  morphTargetLayer: null,
+  // Vector auto-animator (Animate panel): morph tracks (From → To polygon
+  // pairs), timing options, the on-map preview ghosts and the cached plan.
+  morphTracks: [{ from: null, to: null }],
+  morphActiveTrack: 0,
+  morphSequence: false,
   morphDuration: 1.5,
   morphHoldStart: 0.5,
   morphHoldEnd: 0.5,

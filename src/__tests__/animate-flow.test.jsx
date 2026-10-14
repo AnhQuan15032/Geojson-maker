@@ -54,10 +54,10 @@ describe('vector animator — user flow', () => {
     // Rail button opens the panel and auto-fills From/To with the last two shapes
     document.getElementById('btn-animate-rail').click();
     expect(drawer.classList.contains('open')).toBe(true);
-    expect(S.morphSourceLayer).toBe(A);
-    expect(S.morphTargetLayer).toBe(B);
-    expect(document.getElementById('morph-from-name').textContent).toBe('One');
-    expect(document.getElementById('morph-to-name').textContent).toBe('Two');
+    expect(S.morphTracks[0].from).toBe(A);
+    expect(S.morphTracks[0].to).toBe(B);
+    expect(document.getElementById('morph-from-name-0').textContent).toBe('One');
+    expect(document.getElementById('morph-to-name-0').textContent).toBe('Two');
     expect(document.getElementById('morph-status').textContent).toMatch(/32 points matched .* no tangles/);
     expect(preview.disabled).toBe(false);
     expect(exportBtn.disabled).toBe(false);
@@ -91,22 +91,53 @@ describe('vector animator — user flow', () => {
 
     // Deleting the end shape empties its slot through the layer-group hook
     S.drawnItems.removeLayer(B);
-    expect(S.morphTargetLayer).toBeNull();
+    expect(S.morphTracks[0].to).toBeNull();
     expect(exportBtn.disabled).toBe(true);
 
     // Put it back, pick again from the panel (swap, then "Use selected"), export from the panel
     S.drawnItems.addLayer(B);
     document.querySelector('#animate-drawer button[title="Swap From and To"]').click();
-    expect(S.morphSourceLayer).toBeNull();
-    expect(S.morphTargetLayer).toBe(A);
+    expect(S.morphTracks[0].from).toBeNull();
+    expect(S.morphTracks[0].to).toBe(A);
     S.activeSelectedLayer = B;
     const useSelected = [...drawer.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Use selected');
     useSelected[0].click(); // "From" slot
-    expect(S.morphSourceLayer).toBe(B);
-    expect(S.morphTargetLayer).toBe(A);
-    expect(document.getElementById('morph-from-name').textContent).toBe('Two');
+    expect(S.morphTracks[0].from).toBe(B);
+    expect(S.morphTracks[0].to).toBe(A);
+    expect(document.getElementById('morph-from-name-0').textContent).toBe('Two');
     expect(exportBtn.disabled).toBe(false);
     exportBtn.click();
     expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1);
+
+    // A second morph: "Add morph" creates an empty active track, the panel fills it from the selection,
+    // both tracks preview together and export as two keyframed layers; the play-mode select reaches the engine
+    const C = addPolygon([[51.40, -0.30], [51.40, -0.25], [51.45, -0.25], [51.45, -0.30]], 'Three', '#ef4444');
+    document.getElementById('btn-morph-add-track').click();
+    expect(S.morphTracks).toHaveLength(2);
+    expect(S.morphActiveTrack).toBe(1);
+    expect(document.querySelectorAll('#morph-tracks .morph-track')).toHaveLength(2);
+    expect(exportBtn.disabled, 'an empty second track does not block the first').toBe(false);
+    S.activeSelectedLayer = C;
+    document.querySelector('#morph-tracks [data-action="use-from"][data-track="1"]').click();
+    S.activeSelectedLayer = A;
+    document.querySelector('#morph-tracks [data-action="use-to"][data-track="1"]').click();
+    expect(S.morphTracks[1]).toEqual({ from: C, to: A });
+    expect(document.getElementById('morph-from-name-1').textContent).toBe('Three');
+    expect(document.getElementById('morph-status').textContent).toMatch(/2 morphs/);
+    expect(document.getElementById('morph-total-time').textContent).toBe('7.5 s total · 2 morphs together');
+    const mode = document.getElementById('morph-sequence');
+    mode.value = 'sequence';
+    mode.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(S.morphSequence).toBe(true);
+    expect(document.getElementById('morph-total-time').textContent).toBe('13.5 s total · 2 morphs in sequence');
+    preview.click();
+    expect(S.morphPreviewLayer.getLayers()).toHaveLength(2);
+    key('Escape');
+    exportBtn.click();
+    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
+    // removing a track from its row
+    document.querySelector('#morph-tracks [data-action="remove"][data-track="0"]').click();
+    expect(S.morphTracks).toEqual([{ from: C, to: A }]);
+    expect(document.getElementById('morph-from-name-0').textContent).toBe('Three');
   });
 });

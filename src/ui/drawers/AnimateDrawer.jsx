@@ -21,35 +21,22 @@ export function AnimateDrawer() {
       <p className="text-[10px] text-slate-400 leading-relaxed mb-3">
         Draw <b className="text-slate-200">shape 1</b>, draw <b className="text-slate-200">shape 2</b>, then animate: every point of the first
         outline travels to a point of the second one. Missing points are added to the sparser shape first, the start vertex and winding are
-        aligned, and the path is checked so the outline never crosses itself mid-way.
+        aligned, and the path is checked so the outline never crosses itself mid-way. Add as many From → To morphs as you like — each one
+        becomes its own animated layer. Islands and holes are kept: the parts are joined by hair-thin bridges (0.02 px, invisible) so the
+        shape stays one outline with no extra borders, like an Age of History province.
       </p>
 
-      {/* From / To slots */}
+      {/* Morph tracks (From / To pairs) — rows are rendered by the engine (src/engine/animator.js) */}
       <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/70 space-y-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 w-10 shrink-0">From</span>
-          <span id="morph-from-dot" className="w-3 h-3 rounded-full border border-slate-600 shrink-0"></span>
-          <span id="morph-from-name" className="flex-1 min-w-0 truncate text-xs text-slate-500">Not set</span>
-          <button onClick={() => { actions.setMorphSource() }} className="shrink-0 px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 active:scale-[0.98] rounded-lg text-[10px] font-bold text-slate-100 transition">
-            Use selected
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 w-10 shrink-0">To</span>
-          <span id="morph-to-dot" className="w-3 h-3 rounded-full border border-slate-600 shrink-0"></span>
-          <span id="morph-to-name" className="flex-1 min-w-0 truncate text-xs text-slate-500">Not set</span>
-          <button onClick={() => { actions.setMorphTarget() }} className="shrink-0 px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 active:scale-[0.98] rounded-lg text-[10px] font-bold text-slate-100 transition">
-            Use selected
-          </button>
-        </div>
+        <div id="morph-tracks" className="space-y-2"></div>
         <div className="grid grid-cols-3 gap-2 pt-1">
-          <button onClick={() => { actions.autoPickMorphShapes() }} className="col-span-2 p-2 bg-violet-600/80 hover:bg-violet-500 active:scale-[0.98] rounded-xl text-[10px] font-bold text-white flex items-center justify-center gap-1.5 transition">
+          <button onClick={() => { actions.autoPickMorphShapes() }} className="col-span-2 p-2 bg-violet-600/80 hover:bg-violet-500 active:scale-[0.98] rounded-xl text-[10px] font-bold text-white flex items-center justify-center gap-1.5 transition" title="Fill the active morph with the last two shapes drawn">
             <Icon name="sparkles" className="w-3.5 h-3.5" />
             Use last two shapes
           </button>
-          <button onClick={() => { actions.swapMorphEnds() }} className="p-2 bg-slate-700 hover:bg-slate-600 active:scale-[0.98] rounded-xl text-[10px] font-bold text-slate-100 flex items-center justify-center gap-1.5 transition" title="Swap From and To">
-            <Icon name="arrow-right-left" className="w-3.5 h-3.5" />
-            Swap
+          <button id="btn-morph-add-track" onClick={() => { actions.addMorphTrack() }} className="p-2 bg-slate-700 hover:bg-slate-600 active:scale-[0.98] rounded-xl text-[10px] font-bold text-slate-100 flex items-center justify-center gap-1.5 transition" title="Add another From → To morph">
+            <Icon name="plus-circle" className="w-3.5 h-3.5" />
+            Add morph
           </button>
         </div>
         <p id="morph-status" className="text-[10px] text-slate-400 leading-relaxed">
@@ -111,6 +98,13 @@ export function AnimateDrawer() {
             </select>
           </label>
         </div>
+        <label className="block">
+          <span className="text-[10px] text-slate-400">Several morphs play</span>
+          <select id="morph-sequence" defaultValue="together" onChange={(e) => { actions.setMorphOption('sequence', e.currentTarget.value) }} className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg px-1.5 py-1.5 text-[10px] text-slate-200 focus:outline-none focus:border-violet-500">
+            <option value="together">All together (same keyframes)</option>
+            <option value="sequence">One after another (Morph 1, then 2, …)</option>
+          </select>
+        </label>
         <label className="flex items-center justify-between gap-2 cursor-pointer">
           <span className="text-[10px] text-slate-300 flex items-center gap-1.5">
             <Icon name="repeat" className="w-3.5 h-3.5 text-violet-300" />
@@ -123,7 +117,7 @@ export function AnimateDrawer() {
           <input type="checkbox" id="morph-animate-color" defaultChecked onChange={(e) => { actions.setMorphOption('animateColor', e.currentTarget.checked) }} className="w-4 h-4 accent-violet-500 rounded" />
         </label>
         <label className="flex items-center justify-between gap-2 cursor-pointer">
-          <span className="text-[10px] text-slate-300">Include the other shapes as static layers</span>
+          <span className="text-[10px] text-slate-300">Include the other shapes as static layers (Mercator, same fit)</span>
           <input type="checkbox" id="morph-include-others" onChange={(e) => { actions.setMorphOption('includeOthers', e.currentTarget.checked) }} className="w-4 h-4 accent-violet-500 rounded" />
         </label>
       </div>
@@ -142,9 +136,10 @@ export function AnimateDrawer() {
         </button>
       </div>
       <p className="text-[10px] text-slate-500 leading-relaxed mt-3">
-        The export is a 1080×1920 Alight Motion project with one shape layer whose outline points are keyframed
-        (<code className="text-slate-400">&lt;path&gt;&lt;contour&gt;&lt;knot&gt;&lt;p&gt;&lt;kf…</code>) — open it in Alight Motion and the shape
-        morphs on its own; you can still move the keyframes or change the easing there.
+        The export is a 1080×1920 Alight Motion project in <b className="text-slate-400">Web Mercator</b> (the map's own projection, so the
+        shapes look exactly as on screen) with one shape layer per morph whose outline points are keyframed
+        (<code className="text-slate-400">&lt;path&gt;&lt;contour&gt;&lt;knot&gt;&lt;p&gt;&lt;kf…</code>) — open it in Alight Motion and the shapes
+        morph on their own; you can still move the keyframes or change the easing there.
       </p>
     </div>
   );

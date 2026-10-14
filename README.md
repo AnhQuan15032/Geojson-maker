@@ -20,6 +20,24 @@ npm run check     # module-graph check + TDZ check + tests
 and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
 export. No sign-in, no storage, no cloud.
 
+## New in 1.4.0 — Mercator export, many morphs, islands bridged
+
+- **Web Mercator export.** The Alight Motion exports (animation and static)
+  now use the map's own projection, so a shape looks exactly as it does on
+  screen; `makeAlightProjection(bounds, { projection })` defaults to
+  `'mercator'` (`'equirectangular'` reproduces the old fit).
+- **Many morphs.** The Animate panel is a list of **From → To** tracks —
+  *Add morph*, per-row *Use selected* / *Swap* / *Remove*. Each complete track
+  is one keyframed layer in the export and one ghost in the preview; they play
+  *all together* or *one after another* (`morphTimeline(timing, { index, count,
+  sequence })`).
+- **Islands and holes, no extra borders.** `prepareShape(parts)` bridges every
+  part of a multi-polygon into a single ring with 0.02 px corridors (invisible,
+  like Age of History 2 provinces): nearest-first, vertex-to-edge closest
+  approach, holes traced the other way round so the fill rule keeps them empty,
+  zero self-intersections, drawn vertices kept. The point budget is shared by
+  outline length; islands that cannot get 4 points are dropped and reported.
+
 ## New in 1.3.1 — antimeridian fix
 
 Countries, provinces and the Cut Sea coastline that cross **±180°** (Russia,
@@ -295,7 +313,7 @@ the subtree while the Leaflet map stays bound to the detached first copy.
    import resolves to a real export
 2. **TDZ** — no top-level initializer reads a binding from a module it is in an
    import cycle with
-3. **107 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
+3. **118 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
    Alight Motion keyframes, animate user flow, antimeridian repair). The
    original three groups:
    - *parity* — loads the original monolith into a `vm` sandbox and diffs it

@@ -1,5 +1,17 @@
 export const CHANGELOG = [
   {
+    version: '1.4.0',
+    date: '2026-10-14',
+    title: 'Animator — Mercator export, many morphs, islands bridged',
+    changes: [
+      'Alight Motion export now uses Web Mercator — the same projection as the map, so exported shapes and animations look exactly like they do on screen',
+      'Add as many From → To morphs as you want (Add morph); each becomes its own keyframed layer and its own preview ghost, playing all together or one after another',
+      'Islands and holes are animated: every part is joined into one outline by a 0.02 px invisible bridge (like Age of History 2 provinces) — no extra borders, drawn vertices stay put',
+      'Point budget is shared across parts by outline length; tiny islands that cannot get 4 points are dropped and reported in the status',
+      'Status reports each morph (points, additions, tangles, parts + holes + bridges); the total time shows the play mode',
+    ],
+  },
+  {
     version: '1.3.1',
     date: '2026-10-14',
     title: 'Fix — Russia drew as bands across the map (antimeridian)',

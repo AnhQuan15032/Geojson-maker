@@ -17,6 +17,12 @@ import {
   selfIntersections,
   prepareMorph,
   cubicBezierEase,
+  orientRing,
+  closestApproach,
+  insertPointOnRing,
+  bridgeRings,
+  prepareShape,
+  BRIDGE_GAP,
 } from '../engine/morph.js';
 import {
   EASING_PRESETS,
@@ -31,6 +37,10 @@ import {
   setMorphTarget,
   autoPickMorphShapes,
   swapMorphEnds,
+  addMorphTrack,
+  removeMorphTrack,
+  clearMorph,
+  completeTracks,
   setMorphOption,
   buildMorphPlan,
   buildAlightMotionMorphXML,
@@ -225,6 +235,128 @@ describe('morph geometry', () => {
     expect(() => prepareMorph(SQUARE, [[0, 0], [0, 0], [0, 0], [1, 1]])).toThrow(/at least 3/);
   });
 
+  it('closestApproach finds the nearest vertex-to-edge pair in either direction', () => {
+    const a = SQUARE;
+    const b = [[150, 40], [180, 40], [180, 60], [150, 60]];
+    const c = closestApproach(a, b);
+    expect(c.dist).toBeCloseTo(50, 9);
+    expect(c.onA).toEqual([100, 40]); // foot on A's right edge
+    expect(c.onB).toEqual([150, 40]); // B's vertex
+    const d = closestApproach(b, a);
+    expect(d.dist).toBeCloseTo(50, 9);
+    expect(d.onA).toEqual([150, 40]);
+    expect(d.onB).toEqual([100, 40]);
+  });
+
+  it('insertPointOnRing splices into the nearest edge or reuses a coincident vertex', () => {
+    const ring = SQUARE.map((p) => p.slice());
+    const v = insertPointOnRing(ring, [100, 40]);
+    expect(ring).toHaveLength(5);
+    expect(ring[2]).toBe(v);
+    expect(ring.map((p) => p.join(','))).toEqual(['0,0', '100,0', '100,40', '100,100', '0,100']);
+    expect(insertPointOnRing(ring, [100, 100])).toBe(ring[3]);
+    expect(ring).toHaveLength(5);
+  });
+
+  it('bridgeRings joins mainland + islands + a hole into one simple ring with hair-thin bridges', () => {
+    const parts = [
+      { outer: SQUARE, holes: [[[30, 30], [50, 30], [50, 50], [30, 50]]] },
+      { outer: [[150, 20], [180, 20], [180, 50], [150, 50]] },
+      { outer: [[200, 80], [220, 80], [220, 100], [200, 100]] },
+    ];
+    const r = bridgeRings(parts);
+    expect(r.parts).toBe(3);
+    expect(r.holes).toBe(1);
+    expect(r.bridges).toBe(3);
+    expect(r.dropped).toBe(0);
+    // one closed outline, positively wound, that never crosses itself
+    expect(selfIntersections(r.ring)).toBe(0);
+    expect(signedArea(r.ring)).toBeGreaterThan(0);
+    // fill area = mainland − hole + islands (+ a few hundredths for the corridors)
+    const expected = 100 * 100 - 400 + 900 + 400;
+    expect(signedArea(r.ring)).toBeGreaterThan(expected);
+    expect(signedArea(r.ring)).toBeLessThan(expected + 10 * BRIDGE_GAP * 120);
+    // every drawn vertex is still on the outline — a vertex that carries a bridge
+    // is represented by its two corridor-side copies, half a gap (0.01 px) away
+    for (const part of parts) for (const ring of [part.outer, ...(part.holes || [])]) for (const p of ring) {
+      expect(r.ring.some((q) => near(q, p, BRIDGE_GAP / 2 + 1e-9))).toBe(true);
+    }
+    const exact = parts.flatMap((part) => [part.outer, ...(part.holes || [])]).flat().filter((p) => r.ring.some((q) => near(q, p, 1e-9)));
+    expect(exact.length).toBeGreaterThanOrEqual(12); // 16 drawn vertices, at most 4 of them carry a bridge end
+    // the corridor sides really are BRIDGE_GAP apart (and so invisible)
+    const atX150 = r.ring.filter((p) => Math.abs(p[0] - 150) < 1e-9 && p[1] > 19 && p[1] < 21);
+    expect(atX150).toHaveLength(2);
+    expect(Math.abs(atX150[0][1] - atX150[1][1])).toBeCloseTo(BRIDGE_GAP, 9);
+    // the hole is traced the other way round, so the fill rule leaves it empty
+    const holeRun = [[50, 50], [50, 30], [30, 30]];
+    expect(isCyclicSubsequence(holeRun, r.ring)).toBe(true);
+  });
+
+  it('bridgeRings attaches each island to the nearest connected piece (chain of islands)', () => {
+    const parts = [
+      { outer: SQUARE },
+      { outer: [[300, 0], [320, 0], [320, 20], [300, 20]] }, // far island …
+      { outer: [[150, 0], [170, 0], [170, 20], [150, 20]] }, // … reached through the near one
+    ];
+    const r = bridgeRings(parts);
+    expect(r.bridges).toBe(2);
+    expect(selfIntersections(r.ring)).toBe(0);
+    const at = (x) => r.ring.filter((p) => Math.abs(p[0] - x) < 1e-9).length;
+    // mainland's right edge carries exactly one bridge (corner [100,0] → 2 corridor copies, plus [100,100])
+    expect(at(100)).toBe(3);
+    // the far island hangs off the near island's right edge (corner [170,0] → 2 copies, plus [170,20])
+    expect(at(170)).toBe(3);
+    // the corridor to the far island really starts there
+    expect(r.ring.some((p) => Math.abs(p[0] - 300) < 1e-9 && Math.abs(p[1]) < BRIDGE_GAP)).toBe(true);
+  });
+
+  it('bridgeRings handles an island inside a hole (lake island) and single parts untouched', () => {
+    const parts = [
+      { outer: SQUARE, holes: [[[20, 20], [80, 20], [80, 80], [20, 80]]] },
+      { outer: [[45, 45], [55, 45], [55, 55], [45, 55]] },
+    ];
+    const r = bridgeRings(parts);
+    expect(r.bridges).toBe(2);
+    expect(selfIntersections(r.ring)).toBe(0);
+    expect(signedArea(r.ring)).toBeCloseTo(10000 - 3600 + 100, 0);
+    const single = bridgeRings([{ outer: SQUARE }]);
+    expect(single.bridges).toBe(0);
+    expect(single.ring).toHaveLength(4);
+    expect(orientRing(SQUARE.slice().reverse(), true)).toEqual(SQUARE);
+  });
+
+  it('prepareShape spends the point budget across parts and drops islands it cannot afford', () => {
+    const big = { outer: regularPolygon(300, 40, 50, 50) };
+    const islands = Array.from({ length: 30 }, (_, k) => ({ outer: regularPolygon(12, 3, 150 + k * 10, 50) }));
+    const roomy = prepareShape([big, ...islands], { maxPoints: 2000 });
+    expect(roomy.parts).toBe(31);
+    expect(roomy.dropped).toBe(0);
+    expect(roomy.removed).toBe(0);
+    expect(selfIntersections(roomy.ring)).toBe(0);
+    const tight = prepareShape([big, ...islands], { maxPoints: 120 });
+    expect(tight.parts).toBeLessThan(31);
+    expect(tight.dropped).toBeGreaterThan(0);
+    expect(tight.removed).toBeGreaterThan(0);
+    expect(tight.ring.length).toBeLessThanOrEqual(120 + 8); // budget + corridor copies of the last bridges
+    expect(selfIntersections(tight.ring)).toBe(0);
+    // the mainland (the only ring reaching x < 20) is never the one dropped, and it keeps most of the budget
+    expect(tight.ring.filter((p) => p[0] < 20).length).toBeGreaterThan(5);
+    expect(tight.parts).toBeGreaterThanOrEqual(2);
+  });
+
+  it('two multi-part shapes morph without tangles and keep every drawn vertex', () => {
+    const A = prepareShape([
+      { outer: SQUARE, holes: [[[30, 30], [50, 30], [50, 50], [30, 50]]] },
+      { outer: [[150, 20], [180, 20], [180, 50], [150, 50]] },
+    ]);
+    const B = prepareShape([{ outer: [[10, 10], [130, 10], [130, 130], [10, 130]] }, { outer: [[170, 30], [195, 30], [195, 55], [170, 55]] }]);
+    const m = prepareMorph(A.ring, B.ring, { maxPoints: 400 });
+    expect(m.from).toHaveLength(m.to.length);
+    expect(m.tangles).toBe(0);
+    expect(isCyclicSubsequence(A.ring, m.from)).toBe(true);
+    expect(isCyclicSubsequence(B.ring, m.to)).toBe(true);
+  });
+
   it('cubicBezierEase matches the CSS ease-in-out curve', () => {
     expect(cubicBezierEase(0.42, 0, 0.58, 1, 0)).toBe(0);
     expect(cubicBezierEase(0.42, 0, 0.58, 1, 1)).toBe(1);
@@ -250,6 +382,25 @@ describe('Alight Motion keyframed outline XML', () => {
     expect(pp.totalMs).toBe(250 + 1000 + 500 + 1000 + 250);
     expect(pp.keys.map((k) => k.which).join('')).toBe('ABBA');
     expect(morphTimeline({ durationMs: 1000 }).totalMs).toBe(1000);
+  });
+
+  it('plays several tracks in sequence: each in its own slot, same total, reverse order on the way back', () => {
+    const t = { durationMs: 1000, holdStartMs: 500, holdEndMs: 250 };
+    const t0 = morphTimeline(t, { index: 0, count: 3, sequence: true });
+    const t2 = morphTimeline(t, { index: 2, count: 3, sequence: true });
+    expect(t0.totalMs).toBe(500 + 3000 + 250);
+    expect(t2.totalMs).toBe(t0.totalMs);
+    expect(t0.keys.map((k) => k.ms)).toEqual([500, 1500]);
+    expect(t2.keys.map((k) => k.ms)).toEqual([2500, 3500]);
+    // "together" ignores index/count
+    expect(morphTimeline(t, { index: 2, count: 3, sequence: false })).toEqual(morphTimeline(t));
+    const pp0 = morphTimeline({ ...t, pingPong: true }, { index: 0, count: 2, sequence: true });
+    const pp1 = morphTimeline({ ...t, pingPong: true }, { index: 1, count: 2, sequence: true });
+    expect(pp0.totalMs).toBe(500 + 2000 + 250 + 2000 + 500);
+    expect(pp0.keys.map((k) => k.ms)).toEqual([500, 1500, 3750, 4750]);
+    expect(pp1.keys.map((k) => k.ms)).toEqual([1500, 2500, 2750, 3750]);
+    expect(morphProgressAt(2000, pp1, 'linear')).toBeCloseTo(0.5, 9);
+    expect(morphProgressAt(2000, pp0, 'linear')).toBe(1);
   });
 
   it('writes one keyed knot per point with easing on the destination keyframe only', () => {
@@ -352,14 +503,22 @@ function poly(pts, name, fill = '#10b981') {
 function mountAnimateDom() {
   document.body.insertAdjacentHTML('beforeend', `
     <div id="animate-drawer" class="sheet-drawer">
-      <span id="morph-from-dot"></span><span id="morph-from-name"></span>
-      <span id="morph-to-dot"></span><span id="morph-to-name"></span>
+      <div id="morph-tracks"></div>
       <span id="morph-duration-val"></span><span id="morph-hold-start-val"></span><span id="morph-hold-end-val"></span>
       <span id="morph-total-time"></span><p id="morph-status"></p><span id="morph-preview-clock"></span>
+      <select id="morph-sequence"><option value="together">together</option><option value="sequence">sequence</option></select>
       <button id="btn-morph-preview"><span data-label>Preview on map</span></button>
       <button id="btn-morph-export"></button>
     </div>`);
 }
+
+const slotName = (i, slot) => document.getElementById(`morph-${slot}-name-${i}`).textContent;
+const track = (i = 0) => S.morphTracks[i];
+const setTracks = (...pairs) => {
+  S.morphTracks = pairs.map(([from, to]) => ({ from, to }));
+  S.morphActiveTrack = 0;
+  S.morphPlanCache = null;
+};
 
 function captureDownload() {
   const saved = [];
@@ -416,8 +575,9 @@ describe('animator engine', () => {
     sharedDrawnItems([]);
     document.getElementById('animate-drawer')?.remove();
     mountAnimateDom();
-    S.morphSourceLayer = null;
-    S.morphTargetLayer = null;
+    S.morphTracks = [{ from: null, to: null }];
+    S.morphActiveTrack = 0;
+    S.morphSequence = false;
     S.morphPlanCache = null;
     S.morphDuration = 1.5;
     S.morphHoldStart = 0.5;
@@ -458,29 +618,62 @@ describe('animator engine', () => {
     expect(setMorphSource()).toBe(true);
     S.activeSelectedLayer = B;
     expect(setMorphTarget()).toBe(true);
-    expect(S.morphSourceLayer).toBe(A);
-    expect(S.morphTargetLayer).toBe(B);
-    expect(document.getElementById('morph-from-name').textContent).toBe('Box');
-    expect(document.getElementById('morph-to-name').textContent).toBe('Blob');
+    expect(track().from).toBe(A);
+    expect(track().to).toBe(B);
+    expect(slotName(0, 'from')).toBe('Box');
+    expect(slotName(0, 'to')).toBe('Blob');
 
     // choosing the same shape for both ends empties the other slot
     S.activeSelectedLayer = A;
     setMorphTarget();
-    expect(S.morphTargetLayer).toBe(A);
-    expect(S.morphSourceLayer).toBeNull();
+    expect(track().to).toBe(A);
+    expect(track().from).toBeNull();
 
     swapMorphEnds();
-    expect(S.morphSourceLayer).toBe(A);
-    expect(S.morphTargetLayer).toBeNull();
+    expect(track().from).toBe(A);
+    expect(track().to).toBeNull();
 
     expect(autoPickMorphShapes()).toBe(true);
-    expect(S.morphSourceLayer).toBe(B); // second-to-last drawn
-    expect(S.morphTargetLayer).toBe(C); // last drawn
+    expect(track().from).toBe(B); // second-to-last drawn
+    expect(track().to).toBe(C); // last drawn
+  });
+
+  it('tracks can be added, filled independently, removed and cleared', () => {
+    setTracks([A, B]);
+    expect(addMorphTrack()).toBe(1);
+    expect(S.morphTracks).toHaveLength(2);
+    expect(S.morphActiveTrack).toBe(1);
+    expect(document.querySelectorAll('#morph-tracks .morph-track')).toHaveLength(2);
+    // "Use selected" on the new (active) track leaves track 0 alone
+    S.activeSelectedLayer = C;
+    setMorphSource();
+    S.activeSelectedLayer = A;
+    setMorphTarget(1);
+    expect(track(0)).toEqual({ from: A, to: B });
+    expect(track(1)).toEqual({ from: C, to: A });
+    expect(completeTracks()).toHaveLength(2);
+    expect(slotName(1, 'from')).toBe('Bystander');
+    // explicit index targets a track that is not active
+    S.activeSelectedLayer = C;
+    setMorphTarget(0);
+    expect(track(0)).toEqual({ from: A, to: C });
+    swapMorphEnds(0);
+    expect(track(0)).toEqual({ from: C, to: A });
+    removeMorphTrack(0);
+    expect(S.morphTracks).toHaveLength(1);
+    expect(track(0)).toEqual({ from: C, to: A });
+    expect(S.morphActiveTrack).toBe(0);
+    // removing the last track just empties it
+    removeMorphTrack(0);
+    expect(S.morphTracks).toHaveLength(1);
+    expect(track(0)).toEqual({ from: null, to: null });
+    setTracks([A, B], [B, C]);
+    clearMorph();
+    expect(S.morphTracks).toEqual([{ from: null, to: null }]);
   });
 
   it('buildMorphPlan matches counts, keeps the drawn vertices and reports no tangles', () => {
-    S.morphSourceLayer = A;
-    S.morphTargetLayer = B;
+    setTracks([A, B]);
     const plan = buildMorphPlan();
     expect(plan).toBeTruthy();
     expect(plan.from).toHaveLength(plan.to.length);
@@ -503,20 +696,48 @@ describe('animator engine', () => {
   });
 
   it('a removed shape empties its slot and disables export', () => {
-    S.morphSourceLayer = A;
-    S.morphTargetLayer = B;
+    setTracks([A, B]);
     updateMorphUI();
     expect(document.getElementById('btn-morph-export').disabled).toBe(false);
     S.drawnItems.removeLayer(B);
     updateMorphUI();
-    expect(S.morphTargetLayer).toBeNull();
+    expect(track().to).toBeNull();
     expect(document.getElementById('btn-morph-export').disabled).toBe(true);
     expect(buildMorphPlan()).toBeNull();
   });
 
+  it('a multi-part shape (mainland + island + hole) is animated as one bridged outline', () => {
+    const multi = L.polygon([
+      [[[51.50, -0.20], [51.50, -0.12], [51.56, -0.12], [51.56, -0.20]], [[51.52, -0.18], [51.52, -0.15], [51.54, -0.15], [51.54, -0.18]]],
+      [[[51.51, -0.10], [51.51, -0.08], [51.53, -0.08], [51.53, -0.10]]],
+    ], { color: '#8b5cf6', fillColor: '#8b5cf6' });
+    multi.feature = { type: 'Feature', properties: { name: 'Archipelago', fill: '#8b5cf6' } };
+    S.drawnItems.addLayer(multi);
+    setTracks([multi, B]);
+    const plan = buildMorphPlan();
+    expect(plan).toBeTruthy();
+    const t = plan.tracks[0];
+    expect(t.shapeA.parts).toBe(2);
+    expect(t.shapeA.holes).toBe(1);
+    expect(t.shapeA.bridges).toBe(2);
+    expect(t.notes.join(' ')).toMatch(/Archipelago: 2 parts \+ 1 hole joined by 2 hair-thin bridges/);
+    expect(t.meta.tangles).toBe(0);
+    // every drawn vertex of every part is a keyframed point (bridge ends sit 0.01 px off)
+    const proj = plan.proj;
+    for (const part of polygonParts(multi.getLatLngs())) {
+      for (const ring of [part.outer, ...part.holes]) for (const ll of ring) {
+        const p = proj.project(ll.lat, ll.lng);
+        expect(t.from.some((q) => near(q, [p.x, p.y], BRIDGE_GAP / 2 + 1e-6))).toBe(true);
+      }
+    }
+    // the exported layer is a single contour
+    const doc = parseXml(buildAlightMotionMorphXML(plan).xml);
+    expect(doc.querySelectorAll('shape > path > contour')).toHaveLength(1);
+    expect(doc.querySelector('shape').getAttribute('label')).toBe('Archipelago → Blob');
+  });
+
   it('exports a full Alight Motion scene with the keyframed layer on top', () => {
-    S.morphSourceLayer = A;
-    S.morphTargetLayer = B;
+    setTracks([A, B]);
     setMorphOption('duration', 2);
     setMorphOption('holdStart', 0.25);
     setMorphOption('holdEnd', 0.75);
@@ -566,9 +787,52 @@ describe('animator engine', () => {
     expect(all[1].getAttribute('id')).toBe('2000000002');
   });
 
+  it('several tracks export as several keyframed layers, together or in sequence', () => {
+    const D = poly([[51.40, -0.30], [51.40, -0.25], [51.45, -0.25], [51.45, -0.30]], 'Second start', '#ef4444');
+    setTracks([A, B], [D, C]);
+    setMorphOption('duration', 1);
+    setMorphOption('holdStart', 0.5);
+    setMorphOption('holdEnd', 0.5);
+    const plan = buildMorphPlan();
+    expect(plan.tracks).toHaveLength(2);
+    expect(plan.bounds.contains(D.getBounds())).toBe(true);
+    let built = buildAlightMotionMorphXML(plan);
+    expect(built.tracks).toBe(2);
+    expect(built.totalMs).toBe(2000);
+    let doc = parseXml(built.xml);
+    let shapes = doc.querySelectorAll(':scope > shape');
+    expect(shapes).toHaveLength(2);
+    expect(shapes[0].getAttribute('label')).toBe('Box → Blob');
+    expect(shapes[1].getAttribute('label')).toBe('Second start → Bystander');
+    expect(shapes[0].getAttribute('id')).toBe('2000000001');
+    expect(shapes[1].getAttribute('id')).toBe('2000000002');
+    // together: identical keyframe times
+    const kf = (shape) => [...shape.querySelector('knot p').querySelectorAll('kf')].map((k) => k.getAttribute('t'));
+    expect(kf(shapes[0])).toEqual(['0.250000', '0.750000']);
+    expect(kf(shapes[1])).toEqual(['0.250000', '0.750000']);
+
+    // sequence: track 2 moves after track 1, total grows by one duration
+    setMorphOption('sequence', 'sequence');
+    expect(S.morphSequence).toBe(true);
+    built = buildAlightMotionMorphXML();
+    expect(built.totalMs).toBe(3000);
+    doc = parseXml(built.xml);
+    shapes = doc.querySelectorAll(':scope > shape');
+    expect(doc.documentElement.getAttribute('totalTime')).toBe('3000');
+    expect(shapes[0].getAttribute('endTime')).toBe('3000');
+    expect(kf(shapes[0])).toEqual([(500 / 3000).toFixed(6), '0.500000']);
+    expect(kf(shapes[1])).toEqual(['0.500000', (2500 / 3000).toFixed(6)]);
+    expect(document.getElementById('morph-total-time').textContent).toBe('3.0 s total · 2 morphs in sequence');
+
+    // the shapes used by any track are not duplicated as static layers
+    setMorphOption('includeOthers', true);
+    doc = parseXml(buildAlightMotionMorphXML().xml);
+    expect([...doc.querySelectorAll(':scope > shape')].map((s) => s.getAttribute('label'))).toEqual(['Box → Blob', 'Second start → Bystander']);
+    S.drawnItems.removeLayer(D);
+  });
+
   it('downloadAlightMotionMorph saves the .xml and the legacy static export still works', async () => {
-    S.morphSourceLayer = A;
-    S.morphTargetLayer = B;
+    setTracks([A, B]);
     const cap = captureDownload();
     try {
       expect(downloadAlightMotionMorph()).toBe(true);
@@ -594,28 +858,51 @@ describe('animator engine', () => {
     }
   });
 
-  it('preview adds a ghost polygon that follows the morph and is removed on stop', async () => {
-    S.morphSourceLayer = A;
-    S.morphTargetLayer = B;
+  it('preview adds one ghost polygon per track that follows the morph and is removed on stop', async () => {
+    setTracks([A, B], [B, C]);
     expect(startMorphPreview()).toBe(true);
     expect(S.morphPreviewLayer).toBeTruthy();
     expect(S.map.hasLayer(S.morphPreviewLayer)).toBe(true);
     expect(S.drawnItems.hasLayer(S.morphPreviewLayer), 'ghost is not an exportable shape').toBe(false);
     expect(document.getElementById('btn-morph-preview').classList.contains('is-playing')).toBe(true);
     await new Promise((r) => setTimeout(r, 60));
-    const ghost = S.morphPreviewLayer;
-    expect(ghost.getLatLngs()[0]).toHaveLength(40);
+    const group = S.morphPreviewLayer;
+    const ghosts = group.getLayers();
+    expect(ghosts).toHaveLength(2);
+    expect(ghosts[0].getLatLngs()[0]).toHaveLength(40);
+    expect(ghosts[1].getLatLngs()[0]).toHaveLength(40);
     expect(toggleMorphPreview(), 'toggle while playing stops').toBe(false);
     expect(S.morphPreviewLayer).toBeNull();
-    expect(S.map.hasLayer(ghost)).toBe(false);
+    expect(S.map.hasLayer(group)).toBe(false);
     expect(document.getElementById('btn-morph-preview').classList.contains('is-playing')).toBe(false);
   });
 
-  it('projection round-trips through unproject', () => {
-    const proj = makeAlightProjection(L.latLngBounds([51.5, -0.2], [51.56, -0.05]));
+  it('projection is Web Mercator by default and round-trips through unproject', () => {
+    const bounds = L.latLngBounds([40, -10], [70, 10]);
+    const proj = makeAlightProjection(bounds);
+    expect(proj.projection).toBe('mercator');
     const p = proj.project(51.53, -0.12);
     const ll = proj.unproject(p.x, p.y);
     expect(ll.lat).toBeCloseTo(51.53, 9);
     expect(ll.lng).toBeCloseTo(-0.12, 9);
+    // a degree of latitude is taller near the pole than near the equator (Mercator stretch),
+    // and matches Leaflet's own projection ratio
+    const near40 = proj.project(40, 0).y - proj.project(41, 0).y;
+    const near69 = proj.project(69, 0).y - proj.project(70, 0).y;
+    expect(near69 / near40).toBeGreaterThan(2);
+    const lf = (lat) => L.CRS.EPSG3857.project(L.latLng(lat, 0)).y;
+    expect(near69 / near40).toBeCloseTo((lf(70) - lf(69)) / (lf(41) - lf(40)), 6);
+    // the fit stays inside the margins
+    for (const [lat, lng] of [[40, -10], [70, 10], [40, 10], [70, -10]]) {
+      const q = proj.project(lat, lng);
+      expect(q.x).toBeGreaterThanOrEqual(80 - 1e-6);
+      expect(q.x).toBeLessThanOrEqual(1000 + 1e-6);
+      expect(q.y).toBeGreaterThanOrEqual(80 - 1e-6);
+      expect(q.y).toBeLessThanOrEqual(1840 + 1e-6);
+    }
+    // the legacy equirectangular fit is still available
+    const eq = makeAlightProjection(bounds, { projection: 'equirectangular' });
+    expect(eq.projection).toBe('equirectangular');
+    expect(eq.project(40, 0).y - eq.project(41, 0).y).toBeCloseTo(eq.project(69, 0).y - eq.project(70, 0).y, 9);
   });
 });

@@ -44,25 +44,35 @@ export const DEFAULT_MORPH_TIMING = {
  *
  * plain:     A —hold→ A ═morph═> B —hold→ B
  * pingPong:  A —hold→ A ═morph═> B —hold→ B ═morph═> A —hold→ A
+ *
+ * With several morph tracks (`count` > 1) playing in sequence, track `index`
+ * morphs during its own slot and holds while the others move:
+ *
+ *   hold start | track 0 | track 1 | … | hold end  (ping-pong returns in reverse order)
+ *
+ * Every track shares the same total length, so one scene fits them all.
  */
-export function morphTimeline({ durationMs, holdStartMs = 0, holdEndMs = 0, pingPong = false } = DEFAULT_MORPH_TIMING) {
+export function morphTimeline(
+  { durationMs, holdStartMs = 0, holdEndMs = 0, pingPong = false } = DEFAULT_MORPH_TIMING,
+  { index = 0, count = 1, sequence = false } = {},
+) {
   const morph = Math.max(1, Math.round(durationMs));
   const hs = Math.max(0, Math.round(holdStartMs));
   const he = Math.max(0, Math.round(holdEndMs));
+  const n = sequence ? Math.max(1, count | 0) : 1;
+  const i = sequence ? Math.min(Math.max(0, index | 0), n - 1) : 0;
   const keys = [];
-  let cursor = hs;
-  keys.push({ ms: cursor, which: 'A', eased: false });
-  cursor += morph;
-  keys.push({ ms: cursor, which: 'B', eased: true });
+  const forwardEnd = hs + n * morph + he; // where the return pass starts
+  keys.push({ ms: hs + i * morph, which: 'A', eased: false });
+  keys.push({ ms: hs + (i + 1) * morph, which: 'B', eased: true });
   let totalMs;
   if (pingPong) {
-    cursor += he;
-    keys.push({ ms: cursor, which: 'B', eased: false });
-    cursor += morph;
-    keys.push({ ms: cursor, which: 'A', eased: true });
-    totalMs = cursor + hs;
+    const back = n - 1 - i; // last track to arrive is the first to go back
+    keys.push({ ms: forwardEnd + back * morph, which: 'B', eased: false });
+    keys.push({ ms: forwardEnd + (back + 1) * morph, which: 'A', eased: true });
+    totalMs = forwardEnd + n * morph + hs;
   } else {
-    totalMs = cursor + he;
+    totalMs = forwardEnd;
   }
   // No hold at all: the first/last keyframes already sit on the layer ends.
   return { totalMs: Math.max(totalMs, 1), keys };

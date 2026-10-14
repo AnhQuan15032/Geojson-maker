@@ -25,12 +25,28 @@ export const amFmt = fmt;
 // Use large IDs like AutoTrace (2000000000+) to avoid collision with AM internal counter
 export const AM_BASE_ID = 2000000000;
 
+// Web Mercator (the projection the map on screen uses) in radians.
+const MAX_MERC_LAT = 85.05112878;
+const mercX = (lng) => lng * Math.PI / 180;
+const mercY = (lat) => {
+  const phi = Math.max(-MAX_MERC_LAT, Math.min(MAX_MERC_LAT, lat)) * Math.PI / 180;
+  return Math.log(Math.tan(Math.PI / 4 + phi / 2));
+};
+const mercLng = (x) => x * 180 / Math.PI;
+const mercLat = (y) => (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI;
+
 /**
  * Fit a lat/lng bounds box onto the Alight Motion canvas (1080x1920, 9:16
  * vertical composition by default). Returns the projection parameters plus
- * project()/unproject() helpers; `scale` is canvas px per degree of latitude.
+ * project()/unproject() helpers.
+ *
+ * `projection` is 'mercator' (default — shapes come out exactly as they look
+ * on the map, so they line up with a Web Mercator background in Alight
+ * Motion) or 'equirectangular' (the pre-1.4 behaviour: plain degrees scaled by
+ * cos(centre latitude)). `scale` is canvas px per degree of longitude at the
+ * centre of the fit, `cosLat` the cosine of the centre latitude.
  */
-export function makeAlightProjection(bounds, { canvasWidth = 1080, canvasHeight = 1920, margin = 80 } = {}) {
+export function makeAlightProjection(bounds, { canvasWidth = 1080, canvasHeight = 1920, margin = 80, projection = 'mercator' } = {}) {
   const maxDrawW = canvasWidth - margin * 2;
   const maxDrawH = canvasHeight - margin * 2;
   const south = bounds.getSouth();
@@ -40,31 +56,70 @@ export function makeAlightProjection(bounds, { canvasWidth = 1080, canvasHeight 
   const centerLng = (west + east) / 2;
   const centerLat = (south + north) / 2;
   const cosLat = Math.cos(centerLat * Math.PI / 180);
-  const dLng = Math.max((east - west) * cosLat, 0.0001);
-  const dLat = Math.max(north - south, 0.0001);
-  const scale = Math.min(maxDrawW / dLng, maxDrawH / dLat);
   const originX = canvasWidth / 2;
   const originY = canvasHeight / 2;
+
+  if (projection === 'equirectangular') {
+    const dLng = Math.max((east - west) * cosLat, 0.0001);
+    const dLat = Math.max(north - south, 0.0001);
+    const scale = Math.min(maxDrawW / dLng, maxDrawH / dLat);
+    return {
+      projection,
+      canvasWidth,
+      canvasHeight,
+      margin,
+      centerLng,
+      centerLat,
+      cosLat,
+      scale,
+      originX,
+      originY,
+      project(lat, lng) {
+        return {
+          x: originX + (lng - centerLng) * cosLat * scale,
+          y: originY - (lat - centerLat) * scale
+        };
+      },
+      unproject(x, y) {
+        return {
+          lat: centerLat - (y - originY) / scale,
+          lng: centerLng + (x - originX) / (cosLat * scale)
+        };
+      }
+    };
+  }
+
+  // Mercator: fit the projected box, centre it, keep the aspect ratio.
+  const mx0 = mercX(west);
+  const mx1 = mercX(east);
+  const my0 = mercY(south);
+  const my1 = mercY(north);
+  const dX = Math.max(mx1 - mx0, 1e-9);
+  const dY = Math.max(my1 - my0, 1e-9);
+  const k = Math.min(maxDrawW / dX, maxDrawH / dY); // px per radian
+  const cX = (mx0 + mx1) / 2;
+  const cY = (my0 + my1) / 2;
   return {
+    projection: 'mercator',
     canvasWidth,
     canvasHeight,
     margin,
     centerLng,
-    centerLat,
+    centerLat: mercLat(cY),
     cosLat,
-    scale,
+    scale: k * Math.PI / 180,
     originX,
     originY,
     project(lat, lng) {
       return {
-        x: originX + (lng - centerLng) * cosLat * scale,
-        y: originY - (lat - centerLat) * scale
+        x: originX + (mercX(lng) - cX) * k,
+        y: originY - (mercY(lat) - cY) * k
       };
     },
     unproject(x, y) {
       return {
-        lat: centerLat - (y - originY) / scale,
-        lng: centerLng + (x - originX) / (cosLat * scale)
+        lat: mercLat(cY - (y - originY) / k),
+        lng: mercLng(cX + (x - originX) / k)
       };
     }
   };
@@ -114,9 +169,11 @@ export function buildAlightShapeXml(layer, proj, { id, name, endTime = 5000 }) {
   const end = Math.round(endTime);
   let shapesXml = '';
 
+  const project = typeof proj.project === 'function' ? proj.project : null;
+
   if (layer instanceof L.Polygon) {
     const latlngs = layer.getLatLngs();
-    const { pathData, cx, cy } = buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
+    const { pathData, cx, cy } = buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2, project);
     if (pathData) {
       // docs: imported shape has no s attribute; custom outline lives in <path d> (legacy) or <parameter><contour>
       // We follow verified AutoTrace sample which uses <path d> directly with mediaFillMode
@@ -135,7 +192,7 @@ export function buildAlightShapeXml(layer, proj, { id, name, endTime = 5000 }) {
   } else if (layer instanceof L.Polyline) {
     // Leaflet Polygon is also Polyline, but we handled Polygon first — this is line-only
     const latlngs = layer.getLatLngs();
-    const { pathData, cx, cy } = buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
+    const { pathData, cx, cy } = buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2, project);
     const lineW = strokeW > 0 ? strokeW : 3;
     const lineColor = hexToAlightColor(opts.color || props.stroke || fillColor, 1.0);
     if (pathData) {
@@ -153,8 +210,11 @@ export function buildAlightShapeXml(layer, proj, { id, name, endTime = 5000 }) {
     let latlng = null;
     if (typeof layer.getLatLng === 'function') latlng = layer.getLatLng();
     if (latlng) {
-      const x = canvasWidth / 2 + (latlng.lng - centerLng) * cosLat * scale;
-      const y = canvasHeight / 2 - (latlng.lat - centerLat) * scale;
+      const pt = project
+        ? project(latlng.lat, latlng.lng)
+        : { x: canvasWidth / 2 + (latlng.lng - centerLng) * cosLat * scale, y: canvasHeight / 2 - (latlng.lat - centerLat) * scale };
+      const x = pt.x;
+      const y = pt.y;
       // small 28px square centered at marker, relative path around 0,0 with location at absolute x,y
       const r = 14;
       // Use fmt for relative coords
@@ -201,7 +261,9 @@ export function downloadAlightMotionXML() {
   showToast("Alight Motion Project .xml downloaded!");
 }
 
-export function buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat, scale, originX, originY) {
+// `project(lat, lng) → {x, y}` overrides the legacy equirectangular formula
+// (the 7-argument form is kept byte-for-byte for the parity tests).
+export function buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat, scale, originX, originY, project = null) {
   if (!Array.isArray(latlngs) || latlngs.length === 0) return {
     pathData: '',
     cx: originX,
@@ -209,11 +271,13 @@ export function buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat,
   };
   const allPoints = [];
   const rings = [];
+  const toXY = project
+    ? (ll) => project(ll.lat, ll.lng)
+    : (ll) => ({ x: originX + (ll.lng - centerLng) * cosLat * scale, y: originY - (ll.lat - centerLat) * scale });
   function processRing(ring) {
     const pts = [];
     ring.forEach(ll => {
-      const x = originX + (ll.lng - centerLng) * cosLat * scale;
-      const y = originY - (ll.lat - centerLat) * scale;
+      const { x, y } = toXY(ll);
       pts.push({ x, y });
       allPoints.push({ x, y });
     });
@@ -269,7 +333,7 @@ export function buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat,
   };
 }
 
-export function buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat, scale, originX, originY) {
+export function buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat, scale, originX, originY, project = null) {
   if (!Array.isArray(latlngs) || latlngs.length === 0) return {
     pathData: '',
     cx: originX,
@@ -291,6 +355,10 @@ export function buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat,
     segments = [latlngs];
   }
   const transformedSegments = segments.map(seg => seg.map(ll => {
+    if (project) {
+      const p = project(ll.lat, ll.lng);
+      return { x: p.x, y: p.y };
+    }
     const x = originX + (ll.lng - centerLng) * cosLat * scale;
     const y = originY - (ll.lat - centerLat) * scale;
     return { x, y };
