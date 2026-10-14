@@ -88,6 +88,10 @@ export function MobileHeader() {
                 <span className="w-9 h-9 grid place-items-center rounded-xl bg-slate-800 text-slate-300"><Icon name="redo-2" className="w-5 h-5" /></span>
                 <span className="text-[10px] font-bold">Redo</span>
               </button>
+              <button onClick={() => { setMenuOpen(false); actions.openAnimateDrawer(); }} className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
+                <span className="w-9 h-9 grid place-items-center rounded-xl bg-violet-500/15 text-violet-300"><Icon name="clapperboard" className="w-5 h-5" /></span>
+                <span className="text-[10px] font-bold">Animate</span>
+              </button>
               <button onClick={() => { setMenuOpen(false); actions.toggleDrawer('settings-drawer'); }} className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
                 <span className="w-9 h-9 grid place-items-center rounded-xl bg-slate-800 text-slate-300"><Icon name="settings" className="w-5 h-5" /></span>
                 <span className="text-[10px] font-bold">Settings</span>

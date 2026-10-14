@@ -1,5 +1,18 @@
 export const CHANGELOG = [
   {
+    version: '1.3.0',
+    date: '2026-10-14',
+    title: 'Vector Auto-Animator — morph shape 1 into shape 2',
+    changes: [
+      'New Animate panel (rail button, mobile menu, shortcut A): draw two shapes and the first morphs into the second',
+      'Missing points are added to the sparser shape along its outline (drawn vertices never move); start vertex and winding are aligned so nothing swirls or flips',
+      'Every candidate correspondence is checked at 9 intermediate frames — the one with no self-crossings and the least travel wins',
+      'Preview on the map as a dashed ghost polygon, with the same timing and easing as the export; Esc stops it',
+      'Export as an Alight Motion project (.xml) with keyframed outline points (<path><contour><knot><p><kf …>) — hold, morph duration, hold, optional return (A → B → A), 5 easing presets, optional animated fill colour, optional static layers for the other shapes',
+      'Alight Motion exporter refactored into reusable projection / shape / scene builders (same output as before)',
+    ],
+  },
+  {
     version: '1.2.7',
     date: '2026-10-14',
     title: 'Cut Sea — No Islands Mode',

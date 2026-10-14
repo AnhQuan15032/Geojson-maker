@@ -20,6 +20,27 @@ npm run check     # module-graph check + TDZ check + tests
 and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
 export. No sign-in, no storage, no cloud.
 
+## New in 1.3.0 — Vector Auto-Animator
+
+Draw **shape 1**, draw **shape 2**, press **Animate** (rail button, mobile
+menu, or the **A** key). The first outline morphs into the second, you can
+preview it on the map, and export it as an **Alight Motion project (.xml)**
+whose shape layer carries keyframed outline points — open it in Alight Motion
+and the shape animates on its own.
+
+| Step | What happens |
+|---|---|
+| **Points** | If one shape has fewer points than the other, extra vertices are inserted along its outline in proportion to edge length — **drawn vertices never move**, so both keyframes look exactly like what you drew. Shapes over the point budget (default 400) are thinned first (Visvalingam–Whyatt). |
+| **No flipping / swirling** | Both rings are forced to the same winding, and the end shape's start vertex is re-chosen so the total travel distance is minimal. |
+| **No tangles** | Every candidate start vertex is simulated at 9 intermediate frames and checked for self-intersections; the first clean one (by travel distance) wins. The panel status reports `… · no tangles` or the crossing count in amber. |
+| **Timing** | Hold start → morph → hold end (defaults 0.5 s / 1.5 s / 0.5 s), optional **A → B → A**, five easing presets, optional animated fill colour, optional static layers for the other shapes. |
+| **Export** | `<shape>` → `<path>` → `<contour closed="true">` → one `<knot><p>` per point with `<kf t v [e]>` keyframes, `t` normalised to the layer's own time range, easing on the destination keyframe — the format Alight Motion's own serializer writes for an animated outline. |
+
+Code: `src/engine/morph.js` (pure geometry), `src/engine/exporters/alightMotionMorph.js`
+(keyframe XML), `src/engine/animator.js` (state, preview, download),
+`src/ui/drawers/AnimateDrawer.jsx` (panel). Tests: `src/__tests__/morph.test.js`,
+`src/__tests__/animate-flow.test.jsx`.
+
 ## New in 1.2.5 — simpler UI
 
 | Change | What it means |
@@ -167,8 +188,11 @@ src/
   App.jsx                   composes the UI in the original document order
   index.css                 Tailwind layers, then the app's own CSS
   ui/                       14 components — one per region of the old markup
-    drawers/                Export / Draw / Style / Image / Layers
-  engine/                   32 modules, split along the original section banners
+    drawers/                Export / Animate / Draw / Style / Image / Layers / Settings / Changelog
+  engine/                   34 modules, split along the original section banners
+    morph.js                vector auto-animator geometry (densify, align, tangle check)
+    animator.js             Animate panel state, on-map preview, Alight Motion morph export
+    exporters/              geojson / svg / kml / png / alightMotion / alightMotionMorph
     state.js                the 92 mutable fields, behind an observable Proxy
     actions.js              every function the UI can call (the old inline onclick targets)
   store/                    createStore + useSyncExternalStore hooks
@@ -253,11 +277,12 @@ the subtree while the Leaflet map stays bound to the detached first copy.
 
 `npm run check` runs three things:
 
-1. **module graph** — 60 source files, 539 relative imports, every named
+1. **module graph** — 75 source files, 680+ relative imports, every named
    import resolves to a real export
 2. **TDZ** — no top-level initializer reads a binding from a module it is in an
    import cycle with
-3. **37 tests**, in three groups:
+3. **81 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
+   Alight Motion keyframes, animate user flow). The original three groups:
    - *parity* — loads the original monolith into a `vm` sandbox and diffs it
      against the new modules on identical inputs: colour conversions, the SVG /
      KML / Alight Motion path builders, MVT decoding, the border roughener,

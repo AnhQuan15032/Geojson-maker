@@ -2,6 +2,24 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.3.0] — 2026-10-14 — Vector Auto-Animator (shape → shape morph, Alight Motion keyframes)
+
+### Added
+- **Animate panel** (`#animate-drawer`, rail button *Animate*, mobile menu entry, shortcut **A**) — draw shape 1, draw shape 2, open Animate: the two most recent polygons are pre-filled as **From** / **To** (or pick them with *Use selected* / *Swap*). *Preview on map* plays the morph as a dashed ghost polygon; *Export Alight Motion animation (.xml)* saves a project whose shape layer morphs on its own.
+- **`src/engine/morph.js`** — pure geometry: `cleanRing`, `signedArea`, `addPoints` (inserts extra vertices along the perimeter in proportion to edge length **without moving any drawn vertex**), `simplifyRing` (Visvalingam–Whyatt thinning down to the point budget), `rankRotations` / `bestRotation` (start-vertex alignment by least total travel), `selfIntersections` (swept segment test), `tangleScore`, `prepareMorph` (the whole pipeline: clean → same winding → thin → densify the sparser ring → align start vertex → reject offsets that cross themselves at 9 sampled frames) and `cubicBezierEase`.
+- **`src/engine/exporters/alightMotionMorph.js`** — keyframed-outline writer: `<path><contour closed="true"><knot><p><kf t v [e]/>…` with `t` normalised to the layer's own time range, easing only on destination keyframes (`cubicBezier …`, none for linear), identical knot counts across keyframes, optional keyed `<fillColor>` when the two shapes differ in colour, `morphTimeline()` (hold → morph → hold, optional A → B → A), `EASING_PRESETS`, `morphProgressAt()` (preview follows the same curve).
+- **`src/engine/animator.js`** — state + UI glue: `setMorphSource` / `setMorphTarget` / `autoPickMorphShapes` / `swapMorphEnds` / `clearMorph`, `setMorphOption` (duration, hold start/end, easing, ping-pong, point budget, animate colour, include other shapes), `buildMorphPlan` (cached per layer + geometry), `startMorphPreview` / `stopMorphPreview` / `toggleMorphPreview` (rAF ghost `L.polygon`, **Esc** stops), `buildAlightMotionMorphXML`, `downloadAlightMotionMorph`, `updateMorphUI`, `initAnimator` (a deleted shape empties its slot), `openAnimateDrawer`, `polygonParts`.
+- **`src/engine/exporters/alightMotion.js`** — refactored into reusable pieces without changing output: `makeAlightProjection(bounds)` (+ `project` / `unproject`), `buildAlightShapeXml(layer, proj, {id, name, endTime})`, `alightSceneXml(shapesXml, {totalTime, …})`, `saveXmlFile`, `AM_BASE_ID`, `amFix6` / `amFmt`. `downloadAlightMotionXML()` now composes them; the parity tests still pass.
+- **State** — `S.morphSourceLayer`, `S.morphTargetLayer`, `S.morphDuration` (1.5 s), `S.morphHoldStart` / `S.morphHoldEnd` (0.5 s), `S.morphEasing` (`easeInOut`), `S.morphPingPong`, `S.morphMaxPoints` (400), `S.morphIncludeOthers`, `S.morphAnimateColor`, `S.morphPreviewLayer` / `S.morphPreviewRaf` / `S.morphPreviewStart`, `S.morphPlanCache`.
+- **Icons** — `arrow-right-left`, `circle-stop`, `clapperboard`, `play`, `repeat`, `timer` registered.
+- **Tests** — `src/__tests__/morph.test.js` (26 cases: densification keeps drawn vertices and lands on the outline, proportional distribution, thinning keeps corners, start-vertex recovery, winding alignment, zero tangles at every sampled frame for square→star, star→pentagon, triangle→rectangle and L-shape→circle, timeline maths, XML structure parsed with `DOMParser`, keyed fill colour, ping-pong, full scene export incl. static bystander layers, download capture, preview ghost lifecycle, projection round-trip) and `src/__tests__/animate-flow.test.jsx` (real App + `startEngine()`: rail button, auto-fill, shortcut, preview button, Esc, slider/checkbox → state, deleted shape empties slot, Use selected, export click).
+
+### Changed
+- `DRAWER_BUTTON_LABELS` gains `'animate-drawer': 'Animate'`; the shortcut sheet lists **A**.
+
+### Notes
+- Only the **largest outer ring** of each shape is morphed (multi-part shapes and holes are reported in the panel status). Pairs that cannot be morphed without crossing (e.g. a U into an upside-down U) are still exported, with the crossing count shown in amber.
+
 ## [1.2.7] — 2026-10-14 — Cut Sea: No Islands Mode
 
 ### Added

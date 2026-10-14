@@ -6,6 +6,7 @@ import { DesktopRail } from './ui/DesktopRail';
 import { MobileNav } from './ui/MobileNav';
 import { MobileSelectionBar } from './ui/MobileSelectionBar';
 import { ExportDrawer } from './ui/drawers/ExportDrawer';
+import { AnimateDrawer } from './ui/drawers/AnimateDrawer';
 import { DrawDrawer } from './ui/drawers/DrawDrawer';
 import { StyleDrawer } from './ui/drawers/StyleDrawer';
 import { ImageDrawer } from './ui/drawers/ImageDrawer';
@@ -32,6 +33,7 @@ export default function App() {
       <MobileNav />
       <MobileSelectionBar />
       <ExportDrawer />
+      <AnimateDrawer />
       <DrawDrawer />
       <StyleDrawer />
       <ImageDrawer />

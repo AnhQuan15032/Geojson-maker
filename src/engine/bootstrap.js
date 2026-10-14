@@ -4,6 +4,7 @@
 import L from 'leaflet';
 import * as lucide from '../lib/icons.js';
 import { S } from './state.js';
+import { initAnimator, openAnimateDrawer, stopMorphPreview } from './animator.js';
 import { highlightActiveBase } from './baseMaps.js';
 import { randomizeBorderSeed } from './borderDetail.js';
 import { nextUniqueColor, setupLayerProperties } from './colors.js';
@@ -71,6 +72,7 @@ export function startEngine() {
   updateMergeModeUI();
   updateSnappingUI();
   updateCutSeaNoIslandsUI();
+  initAnimator();
   initMobileAppShell();
   updateHistoryButtons();
   initGuiSettings();
@@ -153,6 +155,13 @@ export function startEngine() {
       showToast('Split cancelled');
       return;
     }
+    if (S.morphPreviewRaf && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      stopMorphPreview();
+      showToast('Morph preview stopped');
+      return;
+    }
     if (S.seaPickMode && e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -205,6 +214,11 @@ export function startEngine() {
         if (k === 'e') {
           e.preventDefault();
           toggleDrawer('export-drawer');
+          return;
+        }
+        if (k === 'a') {
+          e.preventDefault();
+          openAnimateDrawer();
           return;
         }
         if (k === 'b') {

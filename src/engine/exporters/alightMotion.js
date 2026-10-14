@@ -18,6 +18,158 @@ const fix6 = n => {
   const [a, b = ''] = String(Math.round(n * 1e6) / 1e6).split('.');
   return a + '.' + (b + '000000').slice(0, 6);
 };
+// Shared with the keyframed (morph) exporter so both write numbers the same way
+export const amFix6 = fix6;
+export const amFmt = fmt;
+
+// Use large IDs like AutoTrace (2000000000+) to avoid collision with AM internal counter
+export const AM_BASE_ID = 2000000000;
+
+/**
+ * Fit a lat/lng bounds box onto the Alight Motion canvas (1080x1920, 9:16
+ * vertical composition by default). Returns the projection parameters plus
+ * project()/unproject() helpers; `scale` is canvas px per degree of latitude.
+ */
+export function makeAlightProjection(bounds, { canvasWidth = 1080, canvasHeight = 1920, margin = 80 } = {}) {
+  const maxDrawW = canvasWidth - margin * 2;
+  const maxDrawH = canvasHeight - margin * 2;
+  const south = bounds.getSouth();
+  const north = bounds.getNorth();
+  const west = bounds.getWest();
+  const east = bounds.getEast();
+  const centerLng = (west + east) / 2;
+  const centerLat = (south + north) / 2;
+  const cosLat = Math.cos(centerLat * Math.PI / 180);
+  const dLng = Math.max((east - west) * cosLat, 0.0001);
+  const dLat = Math.max(north - south, 0.0001);
+  const scale = Math.min(maxDrawW / dLng, maxDrawH / dLat);
+  const originX = canvasWidth / 2;
+  const originY = canvasHeight / 2;
+  return {
+    canvasWidth,
+    canvasHeight,
+    margin,
+    centerLng,
+    centerLat,
+    cosLat,
+    scale,
+    originX,
+    originY,
+    project(lat, lng) {
+      return {
+        x: originX + (lng - centerLng) * cosLat * scale,
+        y: originY - (lat - centerLat) * scale
+      };
+    },
+    unproject(x, y) {
+      return {
+        lat: centerLat - (y - originY) / scale,
+        lng: centerLng + (x - originX) / (cosLat * scale)
+      };
+    }
+  };
+}
+
+/** Scene wrapper — verified header matches AutoTrace/real export (modifiedTime, amver/ffver, retime attrs). */
+export function alightSceneXml(shapesXml, { canvasWidth = 1080, canvasHeight = 1920, totalTime = 5000, title = 'Map Vector Project' } = {}) {
+  let xml = `<?xml version='1.0' encoding='UTF-8' ?>\n`;
+  xml += `<!-- Created by Alight Motion (http://alightmotion.com) -->\n`;
+  xml += `<!-- Exported from GeoJSON Studio -->\n`;
+  xml += `<scene title="${escapeXml(title)}" width="${canvasWidth}" height="${canvasHeight}" exportWidth="${canvasWidth}" exportHeight="${canvasHeight}" precompose="dynamicResolution" bgcolor="#ff000000" totalTime="${Math.round(totalTime)}" fps="30" modifiedTime="${Date.now()}" amver="1028425" ffver="106" am="com.alightcreative.motion/5.0.273.1028425" amplatform="android" retime="freeze" retimeAdaptFPS="false">\n`;
+  xml += shapesXml;
+  xml += `</scene>`;
+  return xml;
+}
+
+/** Trigger a browser download of an XML document. */
+export function saveXmlFile(xml, filename) {
+  const blob = new Blob([xml], {
+    type: "application/xml;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const dlLink = document.createElement('a');
+  dlLink.href = url;
+  dlLink.download = filename;
+  document.body.appendChild(dlLink);
+  dlLink.click();
+  dlLink.remove();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * One static (non-animated) Alight Motion shape layer for a Leaflet layer.
+ * Returns '' when the layer has nothing exportable.
+ */
+export function buildAlightShapeXml(layer, proj, { id, name, endTime = 5000 }) {
+  const { centerLng, centerLat, cosLat, scale, canvasWidth, canvasHeight } = proj;
+  const opts = layer.options || {};
+  const props = layer.feature && layer.feature.properties || {};
+  const label = name || props.name || 'Shape';
+  const fillColor = opts.fillColor || props.fill || PREVIEW_COLOR;
+  const strokeW = Number(opts.weight || props['stroke-width'] || 0) || 0;
+  // Stroke color may differ from fill for polygons
+  const strokeColorRaw = opts.color || props.stroke || null;
+  const amFillHex = hexToAlightColor(fillColor, 1.0);
+  const amStrokeHex = strokeColorRaw ? hexToAlightColor(strokeColorRaw, 1.0) : amFillHex;
+  const end = Math.round(endTime);
+  let shapesXml = '';
+
+  if (layer instanceof L.Polygon) {
+    const latlngs = layer.getLatLngs();
+    const { pathData, cx, cy } = buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
+    if (pathData) {
+      // docs: imported shape has no s attribute; custom outline lives in <path d> (legacy) or <parameter><contour>
+      // We follow verified AutoTrace sample which uses <path d> directly with mediaFillMode
+      shapesXml += `  <shape id="${id}" label="${escapeXml(label)}" startTime="0" endTime="${end}" fillType="color" mediaFillMode="fill">\n`;
+      shapesXml += `    <transform>\n`;
+      shapesXml += `      <location value="${fix6(cx)},${fix6(cy)},0.000000" />\n`;
+      shapesXml += `    </transform>\n`;
+      shapesXml += `    <fillColor value="${amFillHex}" />\n`;
+      if (strokeW > 0) {
+        // verified edge decoration: attributes directly, not nested <color>/<size>
+        shapesXml += `    <path-stroke direction="centered" color="${amStrokeHex}" size="${fix6(strokeW)}" />\n`;
+      }
+      shapesXml += `    <path d="${pathData}" />\n`;
+      shapesXml += `  </shape>\n`;
+    }
+  } else if (layer instanceof L.Polyline) {
+    // Leaflet Polygon is also Polyline, but we handled Polygon first — this is line-only
+    const latlngs = layer.getLatLngs();
+    const { pathData, cx, cy } = buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
+    const lineW = strokeW > 0 ? strokeW : 3;
+    const lineColor = hexToAlightColor(opts.color || props.stroke || fillColor, 1.0);
+    if (pathData) {
+      shapesXml += `  <shape id="${id}" label="${escapeXml(label)}" startTime="0" endTime="${end}" fillType="none" mediaFillMode="fill">\n`;
+      shapesXml += `    <transform>\n`;
+      shapesXml += `      <location value="${fix6(cx)},${fix6(cy)},0.000000" />\n`;
+      shapesXml += `    </transform>\n`;
+      // For lines, stroke is the visible element; no fillColor needed when fillType none but we emit stroke
+      shapesXml += `    <path-stroke direction="centered" color="${lineColor}" size="${fix6(lineW)}" />\n`;
+      shapesXml += `    <path d="${pathData}" />\n`;
+      shapesXml += `  </shape>\n`;
+    }
+  } else if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
+    // Export point as small diamond/circle shape centered at point location
+    let latlng = null;
+    if (typeof layer.getLatLng === 'function') latlng = layer.getLatLng();
+    if (latlng) {
+      const x = canvasWidth / 2 + (latlng.lng - centerLng) * cosLat * scale;
+      const y = canvasHeight / 2 - (latlng.lat - centerLat) * scale;
+      // small 28px square centered at marker, relative path around 0,0 with location at absolute x,y
+      const r = 14;
+      // Use fmt for relative coords
+      const pathData = `M ${fmt(-r)} ${fmt(-r)}L ${fmt(r)} ${fmt(-r)}L ${fmt(r)} ${fmt(r)}L ${fmt(-r)} ${fmt(r)}L ${fmt(-r)} ${fmt(-r)}`;
+      shapesXml += `  <shape id="${id}" label="${escapeXml(label)}" startTime="0" endTime="${end}" fillType="color" mediaFillMode="fill">\n`;
+      shapesXml += `    <transform>\n`;
+      shapesXml += `      <location value="${fix6(x)},${fix6(y)},0.000000" />\n`;
+      shapesXml += `    </transform>\n`;
+      shapesXml += `    <fillColor value="${amFillHex}" />\n`;
+      shapesXml += `    <path d="${pathData}" />\n`;
+      shapesXml += `  </shape>\n`;
+    }
+  }
+  return shapesXml;
+}
 
 // ================= ALIGHT MOTION XML EXPORTER =================
 export function downloadAlightMotionXML() {
@@ -29,119 +181,23 @@ export function downloadAlightMotionXML() {
   showToast("Generating Alight Motion XML Project...");
 
   // Canvas dimensions: 1080x1920 (9:16 vertical composition)
-  const canvasWidth = 1080;
-  const canvasHeight = 1920;
-  const margin = 80;
-  const maxDrawW = canvasWidth - margin * 2;
-  const maxDrawH = canvasHeight - margin * 2;
-  const bounds = S.drawnItems.getBounds();
-  const south = bounds.getSouth();
-  const north = bounds.getNorth();
-  const west = bounds.getWest();
-  const east = bounds.getEast();
-  const centerLng = (west + east) / 2;
-  const centerLat = (south + north) / 2;
-  const cosLat = Math.cos(centerLat * Math.PI / 180);
-  const dLng = Math.max((east - west) * cosLat, 0.0001);
-  const dLat = Math.max(north - south, 0.0001);
-  const scale = Math.min(maxDrawW / dLng, maxDrawH / dLat);
+  const proj = makeAlightProjection(S.drawnItems.getBounds());
   let shapesXml = '';
-  // Use large IDs like AutoTrace (2000000000+) to avoid collision with AM internal counter
-  const baseId = 2000000000;
   let shapeCounter = 0;
   let counter = 0;
   S.drawnItems.eachLayer(layer => {
     counter++;
-    const idx = counter;
-    const opts = layer.options || {};
     const props = layer.feature && layer.feature.properties || {};
-    const name = props.name || `Shape_${idx}`;
-    const fillColor = opts.fillColor || props.fill || PREVIEW_COLOR;
-    const strokeW = Number(opts.weight || props['stroke-width'] || 0) || 0;
-    // Stroke color may differ from fill for polygons
-    const strokeColorRaw = opts.color || props.stroke || null;
-    const amFillHex = hexToAlightColor(fillColor, 1.0);
-    const amStrokeHex = strokeColorRaw ? hexToAlightColor(strokeColorRaw, 1.0) : amFillHex;
-
-    if (layer instanceof L.Polygon) {
-      const latlngs = layer.getLatLngs();
-      const { pathData, cx, cy } = buildAlightMotionPathData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
-      if (pathData) {
-        shapeCounter++;
-        const id = baseId + shapeCounter;
-        // docs: imported shape has no s attribute; custom outline lives in <path d> (legacy) or <parameter><contour>
-        // We follow verified AutoTrace sample which uses <path d> directly with mediaFillMode
-        shapesXml += `  <shape id="${id}" label="${escapeXml(name)}" startTime="0" endTime="5000" fillType="color" mediaFillMode="fill">\n`;
-        shapesXml += `    <transform>\n`;
-        shapesXml += `      <location value="${fix6(cx)},${fix6(cy)},0.000000" />\n`;
-        shapesXml += `    </transform>\n`;
-        shapesXml += `    <fillColor value="${amFillHex}" />\n`;
-        if (strokeW > 0) {
-          // verified edge decoration: attributes directly, not nested <color>/<size>
-          shapesXml += `    <path-stroke direction="centered" color="${amStrokeHex}" size="${fix6(strokeW)}" />\n`;
-        }
-        shapesXml += `    <path d="${pathData}" />\n`;
-        shapesXml += `  </shape>\n`;
-      }
-    } else if (layer instanceof L.Polyline) {
-      // Leaflet Polygon is also Polyline, but we handled Polygon first — this is line-only
-      const latlngs = layer.getLatLngs();
-      const { pathData, cx, cy } = buildAlightMotionLineData(latlngs, centerLng, centerLat, cosLat, scale, canvasWidth / 2, canvasHeight / 2);
-      const lineW = strokeW > 0 ? strokeW : 3;
-      const lineColor = hexToAlightColor(opts.color || props.stroke || fillColor, 1.0);
-      if (pathData) {
-        shapeCounter++;
-        const id = baseId + shapeCounter;
-        shapesXml += `  <shape id="${id}" label="${escapeXml(name)}" startTime="0" endTime="5000" fillType="none" mediaFillMode="fill">\n`;
-        shapesXml += `    <transform>\n`;
-        shapesXml += `      <location value="${fix6(cx)},${fix6(cy)},0.000000" />\n`;
-        shapesXml += `    </transform>\n`;
-        // For lines, stroke is the visible element; no fillColor needed when fillType none but we emit stroke
-        shapesXml += `    <path-stroke direction="centered" color="${lineColor}" size="${fix6(lineW)}" />\n`;
-        shapesXml += `    <path d="${pathData}" />\n`;
-        shapesXml += `  </shape>\n`;
-      }
-    } else if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
-      // Export point as small diamond/circle shape centered at point location
-      let latlng = null;
-      if (typeof layer.getLatLng === 'function') latlng = layer.getLatLng();
-      if (latlng) {
-        const x = canvasWidth / 2 + (latlng.lng - centerLng) * cosLat * scale;
-        const y = canvasHeight / 2 - (latlng.lat - centerLat) * scale;
-        // small 28px square centered at marker, relative path around 0,0 with location at absolute x,y
-        const r = 14;
-        // Use fmt for relative coords
-        const pathData = `M ${fmt(-r)} ${fmt(-r)}L ${fmt(r)} ${fmt(-r)}L ${fmt(r)} ${fmt(r)}L ${fmt(-r)} ${fmt(r)}L ${fmt(-r)} ${fmt(-r)}`;
-        shapeCounter++;
-        const id = baseId + shapeCounter;
-        shapesXml += `  <shape id="${id}" label="${escapeXml(name)}" startTime="0" endTime="5000" fillType="color" mediaFillMode="fill">\n`;
-        shapesXml += `    <transform>\n`;
-        shapesXml += `      <location value="${fix6(x)},${fix6(y)},0.000000" />\n`;
-        shapesXml += `    </transform>\n`;
-        shapesXml += `    <fillColor value="${amFillHex}" />\n`;
-        shapesXml += `    <path d="${pathData}" />\n`;
-        shapesXml += `  </shape>\n`;
-      }
+    const name = props.name || `Shape_${counter}`;
+    // ids are only consumed by layers that actually produce output, like before
+    const xml = buildAlightShapeXml(layer, proj, { id: AM_BASE_ID + shapeCounter + 1, name, endTime: 5000 });
+    if (xml) {
+      shapeCounter++;
+      shapesXml += xml;
     }
   });
-  // Verified header matches AutoTrace/real export: includes modifiedTime, amver/ffver, no retime extras missing
-  let xml = `<?xml version='1.0' encoding='UTF-8' ?>\n`;
-  xml += `<!-- Created by Alight Motion (http://alightmotion.com) -->\n`;
-  xml += `<!-- Exported from GeoJSON Studio -->\n`;
-  xml += `<scene title="Map Vector Project" width="${canvasWidth}" height="${canvasHeight}" exportWidth="${canvasWidth}" exportHeight="${canvasHeight}" precompose="dynamicResolution" bgcolor="#ff000000" totalTime="5000" fps="30" modifiedTime="${Date.now()}" amver="1028425" ffver="106" am="com.alightcreative.motion/5.0.273.1028425" amplatform="android" retime="freeze" retimeAdaptFPS="false">\n`;
-  xml += shapesXml;
-  xml += `</scene>`;
-  const blob = new Blob([xml], {
-    type: "application/xml;charset=utf-8"
-  });
-  const url = URL.createObjectURL(blob);
-  const dlLink = document.createElement('a');
-  dlLink.href = url;
-  dlLink.download = `alightmotion_map_${Date.now()}.xml`;
-  document.body.appendChild(dlLink);
-  dlLink.click();
-  dlLink.remove();
-  URL.revokeObjectURL(url);
+  const xml = alightSceneXml(shapesXml, { canvasWidth: proj.canvasWidth, canvasHeight: proj.canvasHeight, totalTime: 5000 });
+  saveXmlFile(xml, `alightmotion_map_${Date.now()}.xml`);
   showToast("Alight Motion Project .xml downloaded!");
 }
 

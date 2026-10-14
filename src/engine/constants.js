@@ -291,7 +291,8 @@ export const DRAWER_BUTTON_LABELS = {
   'style-drawer': 'Style',
   'layers-drawer': 'Borders',
   'image-drawer': 'Overlay',
-  'export-drawer': 'Export'
+  'export-drawer': 'Export',
+  'animate-drawer': 'Animate'
 };
 
 export const CARD_BASE_CLASS = 'pointer-events-auto w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl shadow-black/60 flex flex-col overflow-hidden transition-all duration-300';

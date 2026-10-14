@@ -655,3 +655,12 @@ html, body {
     #layers-drawer .sheet-drawer.open {
       pointer-events: auto;
     }
+
+    /* Vector animator — the preview button shows Play or Stop depending on state */
+    #btn-morph-preview .morph-icon-stop { display: none; }
+    #btn-morph-preview.is-playing .morph-icon-play { display: none; }
+    #btn-morph-preview.is-playing .morph-icon-stop { display: inline-block; }
+    #btn-morph-preview.is-playing {
+      background: rgba(190, 18, 60, 0.25);
+      box-shadow: inset 0 0 0 1px rgba(251, 113, 133, 0.45);
+    }

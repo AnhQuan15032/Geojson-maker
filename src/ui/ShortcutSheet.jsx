@@ -66,6 +66,14 @@ export function ShortcutSheet() {
           </div>
           <div className="flex justify-between gap-2">
             <span>
+              Animate panel (vector morph)
+            </span>
+            <kbd>
+              A
+            </kbd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span>
               Map & borders
             </span>
             <kbd>
