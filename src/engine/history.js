@@ -75,19 +75,18 @@ export function restoreHistoryState(snap) {
         const p = f && f.properties || {};
         const c = p.fill || PREVIEW_COLOR;
         const isLine = f && f.geometry && String(f.geometry.type).includes('Line');
+        // default smoothFactor: an undo must not render shapes coarser than before
         return isLine ? {
           color: p.stroke || c,
           weight: p['stroke-width'] || 3,
           opacity: 1,
-          fillOpacity: 0,
-          smoothFactor: 2
+          fillOpacity: 0
         } : {
           color: c,
           fillColor: c,
           fillOpacity: 1,
           weight: 0,
-          dashArray: null,
-          smoothFactor: 2
+          dashArray: null
         };
       },
       onEachFeature: (f, layer) => {

@@ -18,6 +18,7 @@ import { highlightCoastlineLevel, updateCoastlineStatus } from './landmass.js';
 import {
   clearMergeSelection,
   cutSeaFromPolygon,
+  executeMerge,
   loadGlobalLandmass,
   toggleMergeCandidate,
   toggleMergeMode,
@@ -190,6 +191,12 @@ export function startEngine() {
     if (!typing) {
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
+      // Enter runs the merge of the picked regions (same as the floating Merge button)
+      if (S.mergeMode && e.key === 'Enter' && !mod && S.mergeSelection.length >= 2) {
+        e.preventDefault();
+        executeMerge();
+        return;
+      }
       if (mod && k === 'z' && !e.shiftKey) {
         e.preventDefault();
         undoHistory();

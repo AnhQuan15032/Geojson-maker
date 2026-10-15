@@ -240,6 +240,83 @@ html, body {
       to { opacity: 1; transform: translate(-50%, 0) scale(1); }
     }
 
+    /* Floating Merge toolbar — visible while Merge mode is on */
+    #merge-bar {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      z-index: 33;
+      width: min(calc(100vw - 20px), 470px);
+      min-height: 56px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 8px 8px 12px;
+      border: 1px solid rgba(139, 92, 246, .55);
+      border-radius: 20px;
+      background: rgba(23, 16, 46, .96);
+      box-shadow: 0 16px 38px rgba(2, 6, 23, .5);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      transform: translateX(-50%);
+    }
+    #merge-bar.visible {
+      display: flex;
+      animation: selectionIn .25s ease both;
+    }
+    .merge-bar-dot {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: rgba(139, 92, 246, .22);
+      color: rgb(221 214 254);
+    }
+    .merge-bar-action {
+      width: 40px;
+      height: 40px;
+      flex: 0 0 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 13px;
+      background: rgb(30 27 58);
+      transition: transform .12s ease, background .12s ease;
+    }
+    .merge-bar-action:hover { background: rgb(49 46 90); }
+    .merge-bar-action:active { transform: scale(.94); }
+    .merge-bar-run {
+      height: 40px;
+      padding: 0 14px;
+      border-radius: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #fff;
+      white-space: nowrap;
+      background: linear-gradient(90deg, #7c3aed, #9333ea);
+      box-shadow: 0 6px 18px rgba(124, 58, 237, .35);
+      transition: transform .12s ease, opacity .12s ease, filter .12s ease;
+    }
+    .merge-bar-run:hover { filter: brightness(1.08); }
+    .merge-bar-run:active { transform: scale(.96); }
+    .merge-bar-run:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      box-shadow: none;
+      filter: none;
+      transform: none;
+    }
+    .merge-bar-run.is-ready { animation: mergeReady .5s ease 1; }
+    @keyframes mergeReady {
+      0% { transform: scale(1); }
+      40% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+
     @media (max-width: 1023px) {
       :root {
         --safe-top: env(safe-area-inset-top, 0px);
@@ -491,6 +568,10 @@ html, body {
         animation: selectionIn .25s ease both;
       }
       body.sheet-open #mobile-selection-bar { display: none !important; }
+      /* the merge toolbar takes the selection bar's spot while merging */
+      #merge-bar { bottom: calc(var(--safe-bottom) + 94px); }
+      body.sheet-open #merge-bar { display: none !important; }
+      body.merge-mode #mobile-selection-bar { display: none !important; }
       .mobile-selection-action {
         width: 39px;
         height: 39px;
@@ -514,6 +595,7 @@ html, body {
       }
 
       body.keyboard-open #mobile-nav,
+      body.keyboard-open #merge-bar,
       body.keyboard-open #mobile-selection-bar { transform: translateY(130px); opacity: 0; pointer-events: none; }
       body.keyboard-open .sheet-drawer { max-height: calc(100dvh - 8px) !important; }
     }
@@ -542,6 +624,7 @@ html, body {
       .sheet-drawer,
       .mobile-dock-item,
       #mobile-selection-bar,
+      #merge-bar,
       #tutorial-card { transition-duration: 0.01ms !important; animation: none !important; }
       *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
     }

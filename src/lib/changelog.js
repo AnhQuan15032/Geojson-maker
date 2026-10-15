@@ -1,5 +1,15 @@
 export const CHANGELOG = [
   {
+    version: '1.5.2',
+    date: '2026-10-15',
+    title: 'Merge — a Merge button on the map, no loss of detail',
+    changes: [
+      'Turning Merge on shows a floating toolbar on the map: how many regions are picked, Merge N, Clear and Done — no trip back into the Draw panel (Enter merges too)',
+      'Merged shapes keep the full detail of the originals: they are drawn at the same tolerance as drawn and loaded shapes (undo/redo too), and the union reads full-precision coordinates',
+      'The "Dissolve inner borders & gaps" option works again and only removes the thin little holes left between mismatched borders — no point is moved, enclaves and islands stay',
+    ],
+  },
+  {
     version: '1.5.1',
     date: '2026-10-15',
     title: 'Drawing — fast clicks never zoom, no hint box under the cursor',

@@ -20,6 +20,24 @@ npm run check     # module-graph check + TDZ check + tests
 and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
 export. No sign-in, no storage, no cloud.
 
+## New in 1.5.2 — merge: a Merge button on the map, no loss of detail
+
+- **Floating Merge toolbar.** Turning *Merge* on shows a bar at the bottom of
+  the map with the picked count, **Merge N**, **Clear** and **✓ Done**, so the
+  fusion runs right where you tap — no trip back into the Draw panel (on a
+  phone the panel closes when merge mode starts). Enter merges as well; the
+  bar goes away when merge mode is off. `src/ui/MergeBar.jsx`,
+  `updateMergeBar()` in `merge.js`.
+- **No quality loss when merging.** Merged shapes (and shapes restored by
+  undo/redo) were drawn with `smoothFactor: 2`, twice Leaflet's default
+  tolerance, so the result looked rougher than its inputs; they now render
+  like every other shape, and the union reads full-precision coordinates.
+  The union itself keeps every non-shared vertex.
+- **Dissolve inner borders & gaps** is a working toggle again (React had
+  rendered it read-only) and no longer buffers the shape: `removeMergeGaps()`
+  drops only new, small, thin holes between mismatched borders — nothing is
+  moved, enclaves and islands stay.
+
 ## New in 1.5.1 — drawing: fast clicks never zoom, no hint box
 
 - **Quick clicks place points, they never zoom.** Leaflet's double-click /
@@ -367,11 +385,11 @@ the subtree while the Leaflet map stays bound to the detached first copy.
 
 `npm run check` runs three things:
 
-1. **module graph** — 82 source files, 760+ relative imports, every named
+1. **module graph** — 84 source files, 770+ relative imports, every named
    import resolves to a real export
 2. **TDZ** — no top-level initializer reads a binding from a module it is in an
    import cycle with
-3. **134 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
+3. **138 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
    Alight Motion keyframes, animate user flow incl. the graph editor, country
    loader flow, drawing feel (fast clicks, Esc), antimeridian repair). The
    original three groups:

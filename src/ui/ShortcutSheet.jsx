@@ -114,6 +114,14 @@ export function ShortcutSheet() {
           </div>
           <div className="flex justify-between gap-2">
             <span>
+              Merge the picked regions (in merge mode)
+            </span>
+            <kbd>
+              Enter
+            </kbd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span>
               Delete mode
             </span>
             <kbd>

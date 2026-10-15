@@ -2,6 +2,19 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.5.2] — 2026-10-15 — Merge: a Merge button on the map, no loss of detail
+
+### Added
+- **Floating Merge toolbar.** Switching *Merge* on (header toggle, rail button, mobile mode button, `M`) now shows a toolbar at the bottom of the map — `Merge mode · tap the regions…`, `1 region picked`, `2 regions picked · press Merge` — with **Merge N**, **Clear** and **✓ Done**. The merge runs right from the map, so on a phone (where turning merge on closes the panel) there is no trip back into the Draw panel; after a merge the bar stays for the next pick, and it disappears when merge mode is turned off or Esc is pressed. `src/ui/MergeBar.jsx`, driven by `updateMergeBar()` in `merge.js`.
+- **Enter merges** the picked regions while merge mode is on (same as the floating button).
+
+### Fixed
+- **Merging no longer lowers the quality of the shapes.** A merged region was drawn with `smoothFactor: 2` (twice Leaflet's default pixel tolerance, six device pixels on a 3× phone), so its outline looked visibly rougher than the two shapes it came from; undo/redo re-rendered *every* shape the same way. Merged and restored shapes are now drawn at the default tolerance like drawn and loaded ones. The union itself was already lossless — every non-shared vertex of the inputs survives (`turf.union` / polygon-clipping only drops exactly collinear points) — and the inputs are now read at full coordinate precision instead of Leaflet's 6-decimal rounding.
+- **"Dissolve inner borders & gaps" works again, and no longer bloats the result.** The checkbox was rendered read-only (and off) by React, so the option could never be used; its old implementation — a ±0.8 m buffer round trip — moved every vertex and tripled the point count. It is now a real toggle (on by default) with a vertex-preserving dissolve: `removeMergeGaps()` drops only the holes that are *new* (bounded by more than one input), small (≤ 25 km²) and thin (isoperimetric quotient ≤ 0.25) — the hairline slivers two mismatched borders leave behind — and keeps every hole an input already had (enclaves, lakes), never touches islands, and never moves a point.
+
+### Changed
+- Tests: 138 (`merge-bar.test.jsx` — toolbar visibility and counts through the real engine, merge from the bar and with Enter, exact vertex sets of the merged outline with and without Dissolve, `removeMergeGaps` unit cases, undo fidelity).
+
 ## [1.5.1] — 2026-10-15 — Drawing: fast clicks never zoom, no hint box under the cursor
 
 ### Fixed
