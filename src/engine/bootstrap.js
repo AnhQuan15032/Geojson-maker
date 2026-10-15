@@ -11,7 +11,7 @@ import { nextUniqueColor, setupLayerProperties } from './colors.js';
 import { LAND_SOURCES } from './constants.js';
 import { onSelectOnMapClick, openCountrySearch, prefetchCountryIndex, removeShapeCompletely, toggleDeleteMode, toggleSelectOnMapMode, updateDeleteModeUI, updateSelectOnMapUI } from './countries.js';
 import { cleanupDrawCurveGhost, curveLayerAllEdges, loadDrawCurvePrefs, setupDrawCurveGhost, updateDrawCurveGhost } from './curves.js';
-import { deleteSelectedOrLast, setDrawMode } from './drawTools.js';
+import { deleteSelectedOrLast, pauseDoubleClickZoom, resumeDoubleClickZoom, setDrawMode } from './drawTools.js';
 import { onFeatureClick } from './exporters/geojson.js';
 import { redoHistory, undoHistory, updateHistoryButtons } from './history.js';
 import { highlightCoastlineLevel, updateCoastlineStatus } from './landmass.js';
@@ -50,7 +50,7 @@ import {
   tutorialNext,
   tutorialPrev,
 } from './tutorial.js';
-import { closeDrawers, initMobileAppShell, showToast, toggleDrawer } from './uiHelpers.js';
+import { closeDrawers, endDrawSession, initMobileAppShell, showToast, toggleDrawer } from './uiHelpers.js';
 
 export function currentLoadMode() {
   return (document.getElementById('countries-load-mode') || {}).value || 'country';
@@ -157,7 +157,7 @@ export function startEngine() {
       S.splitDeleteMode = false;
       S.splitTool = 'line';
       S._splitLockedLayer = null;
-      if (S.map && S.map.pm.globalDrawModeEnabled && S.map.pm.globalDrawModeEnabled()) S.map.pm.disableDraw();
+      endDrawSession();
       if (S.map) S.map.getContainer().style.cursor = '';
       setSplitStatus('idle');
       showToast('Split cancelled');
@@ -168,6 +168,13 @@ export function startEngine() {
       e.stopPropagation();
       stopMorphPreview();
       showToast('Morph preview stopped');
+      return;
+    }
+    // Esc abandons the shape being drawn (double-click zoom comes back with it)
+    if (e.key === 'Escape' && endDrawSession()) {
+      e.preventDefault();
+      e.stopPropagation();
+      showToast('Drawing cancelled');
       return;
     }
     if (S.seaPickMode && e.key === 'Escape') {
@@ -494,6 +501,7 @@ export function initMap() {
 
   // ---- Curve-while-drawing & Drawing Point Labels preview ----
   S.map.on('pm:drawstart', e => {
+    pauseDoubleClickZoom(); // fast clicks place points, they must not zoom
     S.drawGhostWorking = e.workingLayer || null;
     S.activeDrawingWorkingLayer = e.workingLayer || null;
     if (S.drawCurveEnabled && S.drawGhostWorking && S.drawGhostWorking instanceof L.Polyline && !(S.drawGhostWorking instanceof L.Marker)) {
@@ -519,6 +527,7 @@ export function initMap() {
   // A draw session ended (finished or cancelled): drop the ghost, clear labels, and
   // reset split mode if the blade line was abandoned.
   S.map.on('pm:drawend', () => {
+    resumeDoubleClickZoom();
     cleanupDrawCurveGhost();
     S.activeDrawingWorkingLayer = null;
     clearDrawingPointLabels();

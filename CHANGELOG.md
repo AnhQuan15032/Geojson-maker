@@ -2,6 +2,17 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.5.1] — 2026-10-15 — Drawing: fast clicks never zoom, no hint box under the cursor
+
+### Fixed
+- **Quick clicks while drawing no longer zoom the map.** Leaflet turns two clicks inside its double-click window into a `dblclick` — on touch screens even when the taps land in different places — and its DoubleClickZoom handler zoomed in, so tracing a coastline quickly kept jumping the view. The handler is now paused for the length of a draw session only (`pauseDoubleClickZoom` / `resumeDoubleClickZoom` in `drawTools.js`, wired to `pm:drawstart` / `pm:drawend`): wheel, pinch, the +/− buttons and the keyboard still zoom while you draw, and double-click zoom is back 300 ms after the session ends — past the double-tap window, so the tap that closes a shape cannot zoom either. The split blade (which finishes on double-click) keeps Geoman's own handling.
+- **Esc now really stops a Line / Rectangle / Marker session and a line blade.** Geoman's `disableDraw()` only stops the Polygon tool unless told the shape; `endDrawSession()` (uiHelpers) asks Geoman for the active shape first. Used by the split cancel paths and by the new Esc-while-drawing shortcut.
+
+### Changed
+- **No more hint box under the cursor.** Geoman's tooltip ("Click to place first vertex", "Click to continue drawing", "Click first marker to finish") is switched off everywhere (`tooltips: false` in the global options and in every `enableDraw` call) — the toasts and status lines already say what to do.
+- **Esc abandons the shape being drawn** (toast "Drawing cancelled"); nothing is added to the map.
+- Tests: 134 (`draw-fast-clicks.test.jsx` — real Leaflet + Geoman driven by DOM clicks: vertices placed, zoom unchanged, no tooltip, zoom handler restored, tool switching, Esc, split blade).
+
 ## [1.5.0] — 2026-10-15 — Graph editor for the easing, one-key country loading, load a country more than once
 
 ### Added

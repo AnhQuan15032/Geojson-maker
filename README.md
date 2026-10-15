@@ -20,6 +20,18 @@ npm run check     # module-graph check + TDZ check + tests
 and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
 export. No sign-in, no storage, no cloud.
 
+## New in 1.5.1 — drawing: fast clicks never zoom, no hint box
+
+- **Quick clicks place points, they never zoom.** Leaflet's double-click /
+  double-tap zoom is paused for the length of a draw session (`pm:drawstart`
+  → `pm:drawend`, `drawTools.js`); wheel, pinch, buttons and keyboard still
+  zoom while drawing, and double-click zoom returns 300 ms after the session
+  ends so the closing tap cannot zoom either.
+- **No hint box under the cursor** — Geoman's "Click first marker to finish"
+  tooltip is off (`tooltips: false`).
+- **Esc abandons the shape being drawn**; `endDrawSession()` stops whatever
+  tool is active (Geoman's `disableDraw()` only knows Polygon by default).
+
 ## New in 1.5.0 — graph editor, one-key country loading, load a country twice
 
 - **Graph editor for the easing.** The Animate panel has an Alight-Motion-style
@@ -355,13 +367,13 @@ the subtree while the Leaflet map stays bound to the detached first copy.
 
 `npm run check` runs three things:
 
-1. **module graph** — 81 source files, 750+ relative imports, every named
+1. **module graph** — 82 source files, 760+ relative imports, every named
    import resolves to a real export
 2. **TDZ** — no top-level initializer reads a binding from a module it is in an
    import cycle with
-3. **132 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
+3. **134 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
    Alight Motion keyframes, animate user flow incl. the graph editor, country
-   loader flow, antimeridian repair). The
+   loader flow, drawing feel (fast clicks, Esc), antimeridian repair). The
    original three groups:
    - *parity* — loads the original monolith into a `vm` sandbox and diffs it
      against the new modules on identical inputs: colour conversions, the SVG /

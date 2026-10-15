@@ -12,7 +12,7 @@ import { ensureHeavyLibs, turf } from './heavyLibs.js';
 import { updateCountriesUI } from './merge.js';
 import { updateStats } from './quickTools.js';
 import { populateStyleDrawer } from './styleInspector.js';
-import { closeDrawers, showToast } from './uiHelpers.js';
+import { closeDrawers, endDrawSession, showToast } from './uiHelpers.js';
 
 // ================= SPLIT SHAPE WITH A LINE =================
 // The drawn line is extended into a half-plane "blade" polygon, then the
@@ -65,6 +65,7 @@ function startSplitDraw(opts) {
     snapSegment: S.snappingEnabled && S.snapToEdges,
     snapVertex: S.snappingEnabled && S.snapToVertices,
     snapMiddle: S.snappingEnabled && S.snapToMidpoints,
+    tooltips: false,
     templineStyle: {
       color,
       weight: 3,
@@ -143,7 +144,7 @@ export function cancelSplitMode() {
   S.splitTool = 'line';
   S._splitLockedLayer = null;
   setSplitStatus('idle');
-  if (S.map && S.map.pm.globalDrawModeEnabled && S.map.pm.globalDrawModeEnabled()) S.map.pm.disableDraw();
+  endDrawSession();
   if (S.map) S.map.getContainer().style.cursor = '';
   showToast('Split mode stopped');
 }

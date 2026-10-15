@@ -188,7 +188,7 @@ export function ShortcutSheet() {
           </div>
           <div className="flex justify-between gap-2">
             <span>
-              Close / cancel
+              Close / cancel (also abandons the shape being drawn)
             </span>
             <kbd>
               Esc

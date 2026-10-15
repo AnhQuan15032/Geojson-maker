@@ -501,7 +501,10 @@ export function applySnappingOptionsToMap() {
     snapSegment: S.snappingEnabled && S.snapToEdges,
     snapVertex: S.snappingEnabled && S.snapToVertices,
     snapMiddle: S.snappingEnabled && S.snapToMidpoints,
-    allowSelfIntersection: false
+    allowSelfIntersection: false,
+    // Geoman's hint box under the cursor ("Click first marker to finish") is
+    // off everywhere — the toasts and the status lines already say what to do
+    tooltips: false
   });
 }
 

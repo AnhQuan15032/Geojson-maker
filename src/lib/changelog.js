@@ -1,5 +1,15 @@
 export const CHANGELOG = [
   {
+    version: '1.5.1',
+    date: '2026-10-15',
+    title: 'Drawing — fast clicks never zoom, no hint box under the cursor',
+    changes: [
+      'Clicking or tapping quickly while drawing places points and never zooms the map — double-click zoom is paused for the draw session only (wheel, pinch, buttons and keyboard still zoom) and comes back once the shape is finished',
+      'The "Click first marker to finish" box that trailed the cursor is gone',
+      'Esc abandons the shape being drawn; it also really stops Line, Rectangle, Marker and split-line sessions',
+    ],
+  },
+  {
     version: '1.5.0',
     date: '2026-10-15',
     title: 'Graph editor for the easing, one-key country loading, load a country twice',

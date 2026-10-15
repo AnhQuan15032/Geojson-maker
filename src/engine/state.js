@@ -100,6 +100,9 @@ const initialState = {
   showDrawingPointLabels: true,
   drawingPointMarkersGroup: null,
   activeDrawingWorkingLayer: null,
+  // double-click zoom is paused while a draw session runs (see drawTools.js)
+  drawDblClickZoomPaused: false,
+  drawDblClickZoomTimer: null,
   currentGuiTheme: 'dark',
   currentGuiLayout: 'default',
   currentTextSize: 'normal',

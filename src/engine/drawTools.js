@@ -24,6 +24,8 @@ export function setDrawMode(shape) {
     snapVertex: S.snappingEnabled && S.snapToVertices,
     snapMiddle: S.snappingEnabled && S.snapToMidpoints,
     allowSelfIntersection: false,
+    // no "Click first marker to finish" box trailing the cursor
+    tooltips: false,
     templineStyle: {
       color: PREVIEW_COLOR,
       weight: 2.5,
@@ -44,6 +46,43 @@ export function setDrawMode(shape) {
   };
   if (shape === 'Polygon') S.map.pm.enableDraw('Polygon', drawOpts);else if (shape === 'Line') S.map.pm.enableDraw('Line', drawOpts);else if (shape === 'Rectangle') S.map.pm.enableDraw('Rectangle', drawOpts);else if (shape === 'Marker') S.map.pm.enableDraw('Marker', drawOpts);
   showToast(`Draw ${shape}: ${S.snappingEnabled ? '🧲 Edge & vertex snapping active' : 'tap on map'}`);
+}
+
+// ---- Fast clicks while drawing must place points, never zoom ----
+//
+// Leaflet turns two clicks within its double-click window into a `dblclick`
+// (on touch screens even when the taps land in different places) and the
+// DoubleClickZoom handler zooms in — so tracing a coast quickly kept jumping
+// the view. The handler is paused for the length of a draw session only:
+// wheel, pinch, the +/- buttons and the keyboard still zoom while drawing,
+// and double-click zoom is back shortly after the session ends. The resume is
+// delayed past Leaflet's 200 ms double-tap window so the tap that finishes a
+// shape cannot zoom either.
+const DBLCLICK_ZOOM_RESUME_MS = 300;
+
+export function pauseDoubleClickZoom() {
+  const map = S.map;
+  if (!map || !map.doubleClickZoom) return;
+  clearTimeout(S.drawDblClickZoomTimer);
+  S.drawDblClickZoomTimer = null;
+  if (map.doubleClickZoom.enabled()) {
+    map.doubleClickZoom.disable();
+    S.drawDblClickZoomPaused = true;
+  }
+}
+
+export function resumeDoubleClickZoom() {
+  const map = S.map;
+  if (!map || !S.drawDblClickZoomPaused) return;
+  clearTimeout(S.drawDblClickZoomTimer);
+  S.drawDblClickZoomTimer = setTimeout(() => {
+    S.drawDblClickZoomTimer = null;
+    if (!S.drawDblClickZoomPaused) return;
+    // a new session started meanwhile — stay paused until that one ends
+    if (map.pm && map.pm.globalDrawModeEnabled && map.pm.globalDrawModeEnabled()) return;
+    S.drawDblClickZoomPaused = false;
+    if (map.doubleClickZoom) map.doubleClickZoom.enable();
+  }, DBLCLICK_ZOOM_RESUME_MS);
 }
 
 export function toggleEditMode() {
