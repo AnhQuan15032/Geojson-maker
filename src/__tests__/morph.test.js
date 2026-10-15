@@ -22,6 +22,8 @@ import {
   insertPointOnRing,
   bridgeRings,
   prepareShape,
+  shareThinning,
+  untangleRing,
   BRIDGE_GAP,
 } from '../engine/morph.js';
 import {
@@ -50,6 +52,7 @@ import {
   toggleMorphPreview,
   updateMorphUI,
   polygonParts,
+  datelineCut,
 } from '../engine/animator.js';
 
 // ---- fixtures ---------------------------------------------------------------
@@ -104,6 +107,29 @@ function pointOnSegment(p, a, b, eps = 1e-6) {
   const len2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
   return dot >= -eps && dot <= len2 + eps;
 }
+
+function distToPolyline(p, ring) {
+  let best = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / ((dx * dx + dy * dy) || 1)));
+    best = Math.min(best, Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy));
+  }
+  return best;
+}
+
+const sameXY = (p, q) => p[0] === q[0] && p[1] === q[1];
+
+// A 400-point coast with 24 wiggles of ±6 px: thinning it hard replaces the
+// coast with long chords that run up to 12 px inland of the drawn line.
+const WIGGLY = Array.from({ length: 400 }, (_, i) => {
+  const a = (2 * Math.PI * i) / 400;
+  const r = 100 + 6 * Math.sin(a * 24);
+  return [300 + r * Math.cos(a), 300 + r * Math.sin(a)];
+});
 
 function parseXml(xml) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -355,6 +381,87 @@ describe('morph geometry', () => {
     expect(m.tangles).toBe(0);
     expect(isCyclicSubsequence(A.ring, m.from)).toBe(true);
     expect(isCyclicSubsequence(B.ring, m.to)).toBe(true);
+  });
+
+  it('identical outlines do not move, and a local change moves only the local points', () => {
+    const ring = regularPolygon(60);
+    const same = prepareMorph(ring, ring.map((p) => p.slice()), { maxPoints: 400 });
+    expect(same.pointCount).toBe(60);
+    expect(same.travel).toBe(0);
+    expect(same.from.every((p, i) => sameXY(p, same.to[i]))).toBe(true);
+
+    const base = regularPolygon(120, 100, 200, 200);
+    const bumped = base.map((p, i) => (i >= 10 && i <= 12 ? [p[0] + 30, p[1] + 30] : p.slice()));
+    const m = prepareMorph(base, bumped, { maxPoints: 400 });
+    expect(m.matching).toBe('warp');
+    expect(m.pointCount).toBe(120);
+    expect(m.from.filter((p, i) => !sameXY(p, m.to[i]))).toHaveLength(3);
+    expect(m.tangles).toBe(0);
+  });
+
+  it('bridge feet sit on the drawn coastline even when the coast is thinned hard', () => {
+    const island = [[440, 290], [460, 290], [460, 310], [440, 310]];
+    const shape = prepareShape([{ outer: WIGGLY }, { outer: island }], { maxPoints: 60 });
+    expect(shape.parts).toBe(2);
+    expect(shape.bridges).toBe(1);
+    expect(shape.ring.length).toBeLessThanOrEqual(64);
+    expect(selfIntersections(shape.ring)).toBe(0);
+    const drawn = new Set([...WIGGLY, ...island].map((p) => p.join(',')));
+    const inserted = shape.ring.filter((p) => !drawn.has(p.join(',')));
+    expect(inserted).toHaveLength(4); // the two feet, each present as its two corridor copies
+    for (const p of inserted) {
+      expect(Math.min(distToPolyline(p, WIGGLY), distToPolyline(p, island))).toBeLessThan(BRIDGE_GAP);
+    }
+    // …and not on the thinned chords, which cut well inland here
+    const thinnedCoast = shape.ring.filter((p) => drawn.has(p.join(',')) && distToPolyline(p, island) > 1);
+    expect(Math.max(...inserted.map((p) => distToPolyline(p, thinnedCoast)))).toBeGreaterThan(5);
+  });
+
+  it('shareThinning keeps the coastline two shapes have in common on identical vertices', () => {
+    const A = [{ outer: WIGGLY }];
+    const B = [{ outer: WIGGLY.map((p, i) => (i >= 100 && i <= 130 ? [p[0] + 40, p[1] + 40] : p)) }];
+    const common = (x, y) => {
+      const set = new Set(y.ring.map((p) => p.join(',')));
+      return x.ring.filter((p) => set.has(p.join(','))).length;
+    };
+    const firstA = prepareShape(A, { maxPoints: 80 });
+    const firstB = prepareShape(B, { maxPoints: 80 });
+    const sharedA = prepareShape(A, { maxPoints: 80, share: shareThinning(firstB, firstA) });
+    const sharedB = prepareShape(B, { maxPoints: 80, share: shareThinning(firstA, firstB) });
+    expect(common(sharedA, sharedB)).toBeGreaterThanOrEqual(common(firstA, firstB));
+    expect(common(sharedA, sharedB)).toBeGreaterThan(60);
+    const m = prepareMorph(sharedA.ring, sharedB.ring, { maxPoints: 400 });
+    expect(m.tangles).toBe(0);
+    expect(m.from.filter((p, i) => sameXY(p, m.to[i])).length).toBeGreaterThan(60);
+  });
+
+  it('an island the thinned coast would cut through is dropped, never drawn across', () => {
+    const bay = Array.from({ length: 41 }, (_, i) => [100 + i * 5, 10 * Math.sin((Math.PI * i) / 40)]);
+    const mainland = [[0, 0], ...bay, [400, 0], [400, 200], [0, 200]];
+    const island = [[120, 1], [160, 1], [160, 2.9], [120, 2.9]]; // afloat in the bay
+    const roomy = prepareShape([{ outer: mainland }, { outer: island }], { maxPoints: 400 });
+    expect(roomy.parts).toBe(2);
+    expect(roomy.dropped).toBe(0);
+    // force the mainland down to its corners: the bay closes over the island
+    const flat = prepareShape([{ outer: mainland }, { outer: island }], {
+      maxPoints: 400,
+      share: { minAreaFor: (info) => (info.trunk ? 1e9 : 0) },
+    });
+    expect(flat.parts).toBe(1);
+    expect(flat.dropped).toBe(1);
+    expect(flat.crossings).toBe(0);
+    expect(flat.ring).toEqual([[0, 0], [400, 0], [400, 200], [0, 200]]);
+  });
+
+  it('untangleRing unfolds a bow-tie in place', () => {
+    const bow = [[0, 0], [10, 10], [10, 0], [0, 10]];
+    expect(selfIntersections(bow)).toBe(1);
+    expect(untangleRing(bow)).toBe(1); // one 2-opt move
+    expect(selfIntersections(bow)).toBe(0);
+    expect(bow).toHaveLength(4);
+    expect(Math.abs(signedArea(bow))).toBe(100);
+    const square = [[0, 0], [10, 0], [10, 10], [0, 10]];
+    expect(untangleRing(square)).toBe(0);
   });
 
   it('cubicBezierEase matches the CSS ease-in-out curve', () => {
@@ -875,6 +982,50 @@ describe('animator engine', () => {
     expect(S.morphPreviewLayer).toBeNull();
     expect(S.map.hasLayer(group)).toBe(false);
     expect(document.getElementById('btn-morph-preview').classList.contains('is-playing')).toBe(false);
+  });
+
+  it('a shape cut at the dateline is brought round whole: cut, framing, one sewn outline', () => {
+    // Russia-like: the mainland reaches 180° and the tip continues from −180°,
+    // the two pieces sharing the cut edge latitude for latitude
+    const pieces = (west) => [
+      [[[50, west], [50, 180], [70, 180], [70, west]]],
+      [[[50, -180], [50, -170], [70, -170], [70, -180]]],
+    ];
+    const mk = (west, name) => {
+      const layer = L.polygon(pieces(west), { color: '#f59e0b', fillColor: '#f59e0b' });
+      layer.feature = { type: 'Feature', properties: { name, fill: '#f59e0b' } };
+      S.drawnItems.addLayer(layer);
+      return layer;
+    };
+    const R = mk(100, 'Russia');
+    const R2 = mk(95, 'Russia bigger');
+    expect(datelineCut([R, R2])).toBeCloseTo(-170, 9);
+    expect(datelineCut([A, B, C])).toBeNull(); // ordinary shapes are left alone
+    setTracks([R, R2]);
+    const plan = buildMorphPlan();
+    expect(plan.cut).toBeCloseTo(-170, 9);
+    expect(plan.bounds.getWest()).toBe(95);
+    expect(plan.bounds.getEast()).toBe(190); // framed around the shape, not the whole world
+    const t = plan.tracks[0];
+    expect(t.shapeA.parts).toBe(1); // the tip is sewn back onto the mainland
+    expect(t.shapeA.bridges).toBe(0);
+    expect(t.notes).toContain('crosses the dateline — kept whole for the animation');
+    const lngs = t.from.map(([x, y]) => plan.proj.unproject(x, y).lng);
+    expect(Math.max(...lngs)).toBeCloseTo(190, 6);
+    expect(Math.min(...lngs)).toBeCloseTo(100, 6);
+    expect(t.meta.tangles).toBe(0);
+    expect(t.meta.still).toBeGreaterThan(0); // only the west edge moves
+    expect(t.meta.still).toBeLessThan(t.meta.pointCount);
+    // the preview ghost is drawn east of the dateline, next to the mainland
+    expect(startMorphPreview()).toBe(true);
+    const ghostLngs = S.morphPreviewLayer.getLayers()[0].getLatLngs()[0].map((ll) => ll.lng);
+    expect(Math.max(...ghostLngs)).toBeCloseTo(190, 6);
+    stopMorphPreview();
+    // and the export places every knot inside the canvas
+    const doc = parseXml(buildAlightMotionMorphXML(plan).xml);
+    const xs = [...doc.querySelectorAll('contour > knot > p > kf')].map((kf) => Number(kf.getAttribute('v').split(',')[0]));
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(-1000);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(1000);
   });
 
   it('projection is Web Mercator by default and round-trips through unproject', () => {

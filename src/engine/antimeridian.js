@@ -331,6 +331,74 @@ export function unstitchAntimeridian(geometry, opts) {
   return geometry;
 }
 
+/**
+ * The inverse of the split, for one shape brought back together on a canvas:
+ * polygons that touch along `meridian` (the straight cut edges the clipping
+ * left behind, matching latitude for latitude) are sewn into one ring again,
+ * holes pooled. Takes polygon coordinate arrays ([outer, …holes], rings open
+ * or closed) whose longitudes have already been shifted so that both sides of
+ * the cut sit next to each other (the far-west pieces moved by +360°), and
+ * returns the same kind of arrays with closed rings. Pieces that share no cut
+ * edge pass through untouched.
+ */
+export function rejoinAtMeridian(polygons, meridian = 180, tol = 1e-7) {
+  const onM = (p) => Math.abs(p[0] - meridian) < tol;
+  const same = (a, b) => Math.abs(a[1] - b[1]) < tol;
+  const polys = polygons
+    .filter((poly) => poly && poly.length && poly[0] && poly[0].length >= 3)
+    .map(([outer, ...holes]) => {
+      let ring = stripClosing(outer);
+      if (ringArea(ring) < 0) ring = ring.slice().reverse();
+      return { outer: ring, holes: holes.map(stripClosing) };
+    });
+  // Start each ring off the meridian so no run of cut vertices wraps the array.
+  const normalise = (ring) => {
+    const k = ring.findIndex((p) => !onM(p));
+    return k <= 0 ? ring : ring.slice(k).concat(ring.slice(0, k));
+  };
+  // Maximal runs (≥ 2 vertices) lying on the meridian: [first index, last index].
+  const runsOf = (ring) => {
+    const runs = [];
+    for (let i = 0; i < ring.length; i++) {
+      if (!onM(ring[i])) continue;
+      let j = i;
+      while (j + 1 < ring.length && onM(ring[j + 1])) j++;
+      if (j > i) runs.push([i, j]);
+      i = j;
+    }
+    return runs;
+  };
+  for (let guard = 0; guard < polys.length * 2; guard++) {
+    let merged = false;
+    for (let a = 0; a < polys.length && !merged; a++) {
+      const A = normalise(polys[a].outer);
+      if (A.every(onM)) continue;
+      const runsA = runsOf(A);
+      for (let b = 0; b < polys.length && !merged; b++) {
+        if (b === a) continue;
+        const B = normalise(polys[b].outer);
+        if (B.every(onM)) continue;
+        const runsB = runsOf(B);
+        for (const [i, j] of runsA) {
+          const hit = runsB.find(([k, l]) => same(B[k], A[j]) && same(B[l], A[i]));
+          if (!hit) continue;
+          const [k, l] = hit;
+          // B's coast from just after P′ (index l) round to just before Q′ (index k)
+          const detour = [];
+          for (let m = (l + 1) % B.length; m !== k; m = (m + 1) % B.length) detour.push(B[m]);
+          const ring = A.slice(0, i + 1).concat(detour, A.slice(j));
+          polys[a] = { outer: ring, holes: polys[a].holes.concat(polys[b].holes) };
+          polys.splice(b, 1);
+          merged = true;
+          break;
+        }
+      }
+    }
+    if (!merged) break;
+  }
+  return polys.map(({ outer, holes }) => [closeRing(outer), ...holes.map(closeRing)]);
+}
+
 /** Repair a Feature in place (geometry replaced only when needed). Returns the feature. */
 export function unstitchFeature(feature, opts) {
   if (feature && feature.geometry) {

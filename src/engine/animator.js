@@ -15,7 +15,8 @@ import L from 'leaflet';
 import { S } from './state.js';
 import { PREVIEW_COLOR } from './constants.js';
 import { showToast, toggleDrawer } from './uiHelpers.js';
-import { prepareMorph, prepareShape, interpolateRing, cubicBezierEase } from './morph.js';
+import { prepareMorph, prepareShape, shareThinning, interpolateRing, cubicBezierEase } from './morph.js';
+import { rejoinAtMeridian } from './antimeridian.js';
 import {
   makeAlightProjection,
   buildAlightShapeXml,
@@ -71,13 +72,27 @@ export function polygonParts(latlngs) {
     .map((p) => ({ outer: p[0], holes: p.slice(1) }));
 }
 
-/** Every part of a polygon layer (outer rings + holes), projected to canvas space. */
+/**
+ * Every part of a polygon layer (outer rings + holes), projected to canvas
+ * space. With a dateline cut in play the far-west pieces are first brought
+ * round by +360° and sewn back onto the pieces they were cut from, so a shape
+ * such as Russia morphs as one mainland again instead of a mainland plus a
+ * loose sliver at the far edge of the map.
+ */
 function projectedParts(layer, proj) {
   const toRing = (ring) => ring.map((ll) => {
     const p = proj.project(ll.lat, ll.lng);
     return [p.x, p.y];
   });
-  return polygonParts(layer.getLatLngs()).map((part) => ({
+  let parts = polygonParts(layer.getLatLngs());
+  if (proj.cut != null) {
+    const cut = proj.cut;
+    const coords = (ring) => ring.map((ll) => [ll.lng <= cut ? ll.lng + 360 : ll.lng, ll.lat]);
+    const sewn = rejoinAtMeridian(parts.map((part) => [coords(part.outer), ...part.holes.map(coords)]));
+    const open = (ring) => ring.slice(0, -1).map(([lng, lat]) => L.latLng(lat, lng));
+    parts = sewn.map(([outer, ...holes]) => ({ outer: open(outer), holes: holes.map(open) }));
+  }
+  return parts.map((part) => ({
     outer: toRing(part.outer),
     holes: part.holes.map(toRing),
   }));
@@ -278,13 +293,105 @@ export function trackTimeline(index, count) {
 
 // ---- plan ------------------------------------------------------------------
 
-function planBounds(tracks, includeOthers) {
-  if (includeOthers && S.drawnItems && S.drawnItems.getLayers().length) return S.drawnItems.getBounds();
+/** Every layer that takes part in the plan: the tracks' shapes plus, optionally, all the others. */
+function planLayers(tracks, includeOthers) {
+  const layers = [];
+  const seen = new Set();
+  const add = (layer) => {
+    if (!layer || seen.has(layer)) return;
+    seen.add(layer);
+    layers.push(layer);
+  };
+  for (const t of tracks) { add(t.from); add(t.to); }
+  if (includeOthers && S.drawnItems) S.drawnItems.eachLayer(add);
+  return layers;
+}
+
+/** Every [lat, lng] of a layer (polygons, lines, markers, circles). */
+function layerLatLngs(layer) {
+  const out = [];
+  const walk = (v) => {
+    if (Array.isArray(v)) {
+      for (const x of v) walk(x);
+    } else if (v && typeof v === 'object' && 'lat' in v) out.push(v);
+  };
+  if (typeof layer.getLatLngs === 'function') walk(layer.getLatLngs());
+  else if (typeof layer.getLatLng === 'function') out.push(layer.getLatLng());
+  return out;
+}
+
+/**
+ * Longitude east of which nothing is shifted and at (or west of) which every
+ * coordinate is moved by +360°, or null when no shift is needed. A shape that
+ * crosses the dateline is stored as pieces on both edges of the map (Russia:
+ * mainland up to 180°, the tip of Chukotka from −180°); for the animation the
+ * far-west pieces are brought round so the shape stays whole and the canvas
+ * frames it tightly. The cut is placed in the widest longitude gap between
+ * the parts, so no part straddles it.
+ */
+export function datelineCut(layers) {
+  const spans = [];
+  for (const layer of layers) {
+    const parts = typeof layer.getLatLngs === 'function' && layer instanceof L.Polygon
+      ? polygonParts(layer.getLatLngs()).map((p) => p.outer)
+      : [layerLatLngs(layer)];
+    for (const ring of parts) {
+      if (!ring.length) continue;
+      let min = Infinity;
+      let max = -Infinity;
+      for (const ll of ring) {
+        if (ll.lng < min) min = ll.lng;
+        if (ll.lng > max) max = ll.lng;
+      }
+      spans.push([min, max]);
+    }
+  }
+  if (spans.length < 2) return null;
+  spans.sort((a, b) => a[0] - b[0]);
+  const west = spans[0][0];
+  let east = -Infinity;
+  for (const sp of spans) east = Math.max(east, sp[1]);
+  if (east - west <= 180) return null; // comfortably on one side of the world
+  // widest interior gap between merged spans
+  let gap = 0;
+  let cut = null;
+  let reach = spans[0][1];
+  for (let i = 1; i < spans.length; i++) {
+    const [a, b] = spans[i];
+    if (a > reach && a - reach > gap) {
+      gap = a - reach;
+      cut = reach;
+    }
+    reach = Math.max(reach, b);
+  }
+  const wrapGap = 360 - (east - west); // the gap across the dateline itself
+  if (cut == null || gap <= wrapGap) return null;
+  return cut;
+}
+
+/** Projection that first brings the pieces west of `cut` round by +360° (and back on the way out). */
+function shiftedProjection(proj, cut) {
+  if (cut == null) return proj;
+  return {
+    ...proj,
+    cut,
+    project(lat, lng) {
+      return proj.project(lat, lng <= cut ? lng + 360 : lng);
+    },
+    unproject(x, y) {
+      return proj.unproject(x, y); // longitudes > 180 draw east of the dateline, next to the mainland
+    },
+  };
+}
+
+/** Bounds of the plan's layers after the dateline shift. */
+function planBounds(layers, cut) {
   let bounds = null;
-  for (const t of tracks) {
-    for (const layer of [t.from, t.to]) {
-      const b = layer.getBounds();
-      bounds = bounds ? bounds.extend(b) : L.latLngBounds(b.getSouthWest(), b.getNorthEast());
+  for (const layer of layers) {
+    for (const ll of layerLatLngs(layer)) {
+      const lng = cut != null && ll.lng <= cut ? ll.lng + 360 : ll.lng;
+      const p = L.latLng(ll.lat, lng);
+      bounds = bounds ? bounds.extend(p) : L.latLngBounds(p, p);
     }
   }
   return bounds;
@@ -328,22 +435,33 @@ export function buildMorphPlan({ quiet = false } = {}) {
   }
   const includeOthers = !!S.morphIncludeOthers;
   const maxPoints = Math.max(3, Number(S.morphMaxPoints) || 400);
-  const bounds = planBounds(ready, includeOthers);
+  const layers = planLayers(ready, includeOthers);
+  const cut = datelineCut(layers);
+  const bounds = planBounds(layers, cut);
   const signature = [
-    maxPoints, includeOthers ? 1 : 0, bounds.toBBoxString(),
+    maxPoints, includeOthers ? 1 : 0, bounds.toBBoxString(), cut == null ? '' : cut,
     ...ready.map((t) => `${L.stamp(t.from)}>${L.stamp(t.to)}:${geometrySignature(t.from)}:${geometrySignature(t.to)}`),
   ].join('|');
   if (S.morphPlanCache && S.morphPlanCache.signature === signature) return S.morphPlanCache;
 
-  const proj = makeAlightProjection(bounds);
+  const proj = shiftedProjection(makeAlightProjection(bounds), cut);
   const tracks = [];
   for (const t of ready) {
     let shapeA;
     let shapeB;
     let morph;
     try {
-      shapeA = prepareShape(projectedParts(t.from, proj), { maxPoints });
-      shapeB = prepareShape(projectedParts(t.to, proj), { maxPoints });
+      const partsA = projectedParts(t.from, proj);
+      const partsB = projectedParts(t.to, proj);
+      const cacheA = new Map();
+      const cacheB = new Map();
+      // first pass: each shape on its own; second pass: both follow the other's
+      // detail thresholds and island choices, so the coastline they share keeps
+      // exactly the same vertices (and does not move at all in the morph)
+      const firstA = prepareShape(partsA, { maxPoints, cache: cacheA });
+      const firstB = prepareShape(partsB, { maxPoints, cache: cacheB });
+      shapeA = prepareShape(partsA, { maxPoints, cache: cacheA, share: shareThinning(firstB, firstA) });
+      shapeB = prepareShape(partsB, { maxPoints, cache: cacheB, share: shareThinning(firstA, firstB) });
       morph = prepareMorph(shapeA.ring, shapeB.ring, {
         maxPoints: Math.max(maxPoints, shapeA.ring.length, shapeB.ring.length),
         minPoints: Math.min(32, maxPoints),
@@ -357,17 +475,24 @@ export function buildMorphPlan({ quiet = false } = {}) {
       const bits = [];
       if (shape.parts > 1) bits.push(`${shape.parts} parts`);
       if (shape.holes) bits.push(`${shape.holes} hole${shape.holes === 1 ? '' : 's'}`);
-      if (bits.length) notes.push(`${name}: ${bits.join(' + ')} joined by ${shape.bridges} hair-thin bridge${shape.bridges === 1 ? '' : 's'}`);
+      if (bits.length) notes.push(`${name}: ${bits.join(' + ')} joined by ${shape.bridges} hair-thin bridge${shape.bridges === 1 ? '' : 's'} from the coast`);
       if (shape.dropped) notes.push(`${name}: ${shape.dropped} tiny part${shape.dropped === 1 ? '' : 's'} dropped — raise the point budget to keep them`);
     };
+    if (cut != null) notes.push('crosses the dateline — kept whole for the animation');
     const nameA = morphLayerName(t.from, 'Shape A');
     const nameB = morphLayerName(t.to, 'Shape B');
     describeShape(shapeA, nameA);
     describeShape(shapeB, nameB);
+    let still = 0;
+    for (let i = 0; i < morph.from.length; i++) {
+      const dx = morph.from[i][0] - morph.to[i][0];
+      const dy = morph.from[i][1] - morph.to[i][1];
+      if (dx * dx + dy * dy < 1e-12) still++;
+    }
     tracks.push({
       from: morph.from,
       to: morph.to,
-      meta: { ...morph, removedA: morph.removedA + shapeA.removed, removedB: morph.removedB + shapeB.removed },
+      meta: { ...morph, removedA: morph.removedA + shapeA.removed, removedB: morph.removedB + shapeB.removed, still },
       shapeA,
       shapeB,
       notes,
@@ -383,6 +508,7 @@ export function buildMorphPlan({ quiet = false } = {}) {
     signature,
     proj,
     bounds,
+    cut,
     tracks,
     // first track mirrors the old single-track fields so callers/tests stay simple
     from: tracks[0].from,
@@ -569,11 +695,13 @@ export function downloadAlightMotionMorph() {
 function describeMeta(track) {
   const m = track.meta;
   const bits = [`${m.pointCount} points matched`];
+  if (m.still > 0 && m.still < m.pointCount) bits.push(`${m.still} stay put, ${m.pointCount - m.still} move`);
   if (m.addedA > 0) bits.push(`+${m.addedA} added to ${track.nameA}`);
   if (m.addedB > 0) bits.push(`+${m.addedB} added to ${track.nameB}`);
   if (m.removedA > 0) bits.push(`${m.removedA} thinned from ${track.nameA}`);
   if (m.removedB > 0) bits.push(`${m.removedB} thinned from ${track.nameB}`);
   if (m.reversed) bits.push('winding aligned');
+  if (m.matching === 'uniform') bits.push('even spacing (the least-motion match would cross itself)');
   bits.push(m.tangles === 0
     ? 'no tangles'
     : `${m.tangles} crossing${m.tangles === 1 ? '' : 's'} mid-way — these outlines are too different to morph without briefly overlapping`);

@@ -20,6 +20,29 @@ npm run check     # module-graph check + TDZ check + tests
 and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
 export. No sign-in, no storage, no cloud.
 
+## New in 1.4.1 — bridges on the coast, least-motion morphs, dateline shapes whole
+
+- **Bridges start on the real coast.** `prepareShape` plans the corridors on
+  the full-resolution rings (chunked, memoised closest approach) and protects
+  the foot points through thinning, so a bridge leaves the drawn shoreline at
+  the point nearest the island even when the coast is thinned hard.
+- **Only what changes moves.** `prepareMorph` aligns the two rings by dynamic
+  time warping on vertex distance (`alignRings`): identical coastline pairs
+  with itself and stays put, extra detail on one side is matched by vertices
+  inserted along the other's own edges. Both shapes thin with shared per-ring
+  thresholds (`shareThinning`), so Russia → Russia + Ukraine keeps 364 of 384
+  points still (travel 8.8 px instead of 90 px). Candidates are ranked by
+  travel + `TANGLE_COST` per mid-morph crossing; the uniform match remains the
+  fallback.
+- **Dateline shapes stay whole.** Pieces stored west of −180° are brought
+  round by +360° (`datelineCut`, `shiftedProjection` in `animator.js`) and sewn
+  back onto their mainland (`rejoinAtMeridian` in `antimeridian.js`); preview
+  and export frame the whole shape tightly.
+- **Validated thinning.** Nothing is dropped while the shape fits the budget as
+  drawn; an island the thinned coast cuts through or swallows is dropped and
+  the shape rebuilt; a coast that folds over itself is straightened
+  (`untangleRing`). The bridged ring is always a simple polygon.
+
 ## New in 1.4.0 — Mercator export, many morphs, islands bridged
 
 - **Web Mercator export.** The Alight Motion exports (animation and static)
@@ -313,7 +336,7 @@ the subtree while the Leaflet map stays bound to the detached first copy.
    import resolves to a real export
 2. **TDZ** — no top-level initializer reads a binding from a module it is in an
    import cycle with
-3. **118 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
+3. **127 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
    Alight Motion keyframes, animate user flow, antimeridian repair). The
    original three groups:
    - *parity* — loads the original monolith into a `vm` sandbox and diffs it

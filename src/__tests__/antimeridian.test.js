@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   clipRingToLngRange,
   geometryNeedsRepair,
+  rejoinAtMeridian,
   ringArea,
   ringNeedsRepair,
   splitLineAtAntimeridian,
@@ -280,5 +281,46 @@ describe('GeoJSON import repair', () => {
     const before = JSON.stringify(fc);
     repairGeoDataObject(fc);
     expect(JSON.stringify(fc)).toBe(before);
+  });
+});
+
+describe('rejoinAtMeridian (sewing the pieces back together for the animator)', () => {
+  // the far-west pieces are brought round by +360° first, as the animator does
+  const shift = (poly) => poly.map((r) => r.map(([lng, lat]) => [lng <= -100 ? lng + 360 : lng, lat]));
+  const west = [[[170, 0], [180, 0], [180, 10], [170, 10], [170, 0]]];
+  const east = [[[-180, 0], [-170, 0], [-170, 10], [-180, 10], [-180, 0]]];
+
+  it('merges two pieces that share a cut edge into one ring without the cut', () => {
+    const out = rejoinAtMeridian([west, shift(east)]);
+    expect(out).toHaveLength(1);
+    expect(out[0][0]).toEqual([[170, 0], [180, 0], [190, 0], [190, 10], [180, 10], [170, 10], [170, 0]]);
+    expect(ringArea(out[0][0])).toBe(200);
+  });
+
+  it('copes with extra vertices on the cut, reversed winding, and pools the holes', () => {
+    const w2 = [
+      [[170, 0], [180, 0], [180, 5], [180, 10], [170, 10], [170, 0]].reverse(),
+      [[172, 2], [172, 4], [174, 4], [174, 2], [172, 2]],
+    ];
+    const e2 = [
+      [[-180, 0], [-170, 0], [-170, 10], [-180, 10], [-180, 5], [-180, 0]],
+      [[-176, 2], [-176, 4], [-174, 4], [-174, 2], [-176, 2]],
+    ];
+    const out = rejoinAtMeridian([w2, shift(e2)]);
+    expect(out).toHaveLength(1);
+    expect(ringArea(out[0][0])).toBe(200);
+    expect(out[0]).toHaveLength(3); // outer + both holes
+    expect(out[0][0].filter(([lng]) => lng === 180)).toHaveLength(2); // only the two end points of the seam survive
+  });
+
+  it('leaves pieces that share no cut edge alone and chains several pieces', () => {
+    const loose = [[[0, 0], [1, 0], [1, 1], [0, 0]]];
+    expect(rejoinAtMeridian([west, loose])).toHaveLength(2);
+    // Wrangel as world-atlas delivers it: two halves either side of the dateline
+    const halves = splitPolygonAtAntimeridian([WRANGEL]).map(shift);
+    expect(halves).toHaveLength(2);
+    const whole = rejoinAtMeridian(halves);
+    expect(whole).toHaveLength(1);
+    expect(ringArea(whole[0][0])).toBeCloseTo(halves.reduce((a, p) => a + Math.abs(ringArea(p[0])), 0), 9);
   });
 });

@@ -1,5 +1,17 @@
 export const CHANGELOG = [
   {
+    version: '1.4.1',
+    date: '2026-10-15',
+    title: 'Animator — bridges start on the coast, only what changes moves, dateline shapes whole',
+    changes: [
+      'Island bridges are planned on the full-detail coastline, so every hair-thin bridge leaves exactly from the drawn shore — never from a point inland',
+      'Least-motion matching: coastline the two shapes share stays exactly still; only the region that actually changes moves (Russia → Russia + Ukraine: 364 of 384 points stay put)',
+      'Shapes cut at the dateline (Russia, Wrangel Island) are brought round and sewn back together for the animation, so the whole mainland is in the preview and the export, framed tightly',
+      'Nothing is dropped while the shape fits the point budget; islands the thinned coast would cut through are dropped instead of drawn across, folded coasts are straightened',
+      'Status shows how many points stay put and how many move',
+    ],
+  },
+  {
     version: '1.4.0',
     date: '2026-10-14',
     title: 'Animator — Mercator export, many morphs, islands bridged',

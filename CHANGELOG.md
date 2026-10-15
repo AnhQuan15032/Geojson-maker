@@ -2,6 +2,19 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.4.1] — 2026-10-15 — Animator: bridges start on the coast, only what changes moves, dateline shapes stay whole
+
+### Fixed
+- **Bridges begin on the real coastline.** The bridge corridors were planned *after* the coast had been thinned, so on a heavily thinned mainland a bridge could leave from a chord that runs inland of the drawn shore. `prepareShape` now plans every bridge on the full-resolution rings (chunked, memoised closest approach) and protects the two foot points through thinning, so each corridor leaves exactly the drawn coast at the point nearest the island — and stays there during the morph.
+- **Only the region that changes moves.** Morphing Russia into Russia + Ukraine used to slide the whole outline round (arc-length matching plus a best rotation). The correspondence is now a least-motion alignment (`alignRings`, dynamic time warping on vertex distance): coastline both shapes share pairs with itself and does not move at all; where one shape has extra detail the other gets vertices inserted along its own edges, never moving a drawn vertex. Both shapes are thinned with *shared* per-ring detail thresholds and island choices (`shareThinning`), so common coastline keeps identical vertices. Russia → Russia + Ukraine at 400 points: 364 of 384 points stay put, average travel 8.8 px instead of 90 px. The status line now says `… · 364 stay put, 20 move`.
+- **The part of Russia across the dateline is in the animation.** A shape stored as pieces on both edges of the map (Chukotka from −180°, Wrangel's eastern half) is brought round by +360° (`datelineCut`, `shiftedProjection`) and sewn back onto the piece it was cut from (`rejoinAtMeridian` in `antimeridian.js`), so the morph ring, the preview ghost and the export show one whole mainland framed tightly — not a world-wide canvas with a sliver at the far left. Status: `crosses the dateline — kept whole for the animation`.
+- **Nothing is dropped while the shape fits the budget as drawn.** A tiny hand-drawn island was dropped by the perimeter-share rule even when the whole shape had a few dozen points.
+- **Thinned coasts never cut through islands or fold over themselves.** After thinning, every ring is checked: an island the thinned coast crosses or swallows is dropped and the shape rebuilt without it (so the bridged ring is always a simple polygon), and a coast that folds over itself when thinned (Anadyr inlet at 800–1500 points) is straightened with a 2-opt pass (`untangleRing`).
+
+### Changed
+- `prepareMorph` ranks candidates by travel plus `TANGLE_COST` (20 px) per mid-morph crossing instead of refusing any crossing: a least-motion match with one brief local crossing beats a tangle-free match that moves everything. The uniform match is still the fallback and is reported as `even spacing (the least-motion match would cross itself)`.
+- `prepareShape(parts, { maxPoints, minRingPoints, gap, cache, share })` returns `rings` (per-ring key, area, bbox, threshold, points), `crossings`, `untangled`; `opts.minAreaFor` is replaced by `opts.share` from `shareThinning(other, own)`. New exports: `effectiveAreas`, `keepByArea`, `prefixArcs`, `alignRings`, `alignmentSeeds`, `densifyPairs`, `untangleRing`, `shareThinning`, `TANGLE_COST`.
+
 ## [1.4.0] — 2026-10-14 — Animator: Mercator export, many morphs at once, islands & holes bridged into one outline
 
 ### Added
