@@ -85,6 +85,7 @@ export function AnimateDrawer() {
               <option value="easeOut">Ease out (quick start)</option>
               <option value="easeIn">Ease in (slow start)</option>
               <option value="linear">Linear (constant speed)</option>
+              <option value="custom">Custom (graph editor)</option>
             </select>
           </label>
           <label className="block">
@@ -97,6 +98,62 @@ export function AnimateDrawer() {
               <option value="1500">1500 — max (heavy in AM)</option>
             </select>
           </label>
+        </div>
+        {/* Graph editor — the curve Alight Motion will play (cubicBezier x1 y1 x2 y2) */}
+        <div id="morph-curve-editor" className="rounded-2xl border border-slate-700/80 bg-slate-950 p-2.5 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold text-slate-300 flex items-center gap-1.5">
+              <Icon name="spline" className="w-3.5 h-3.5 text-emerald-400" />
+              Graph editor
+            </span>
+            <span id="morph-curve-code" className="text-[9px] font-mono text-emerald-300 truncate">cubicBezier 0.42 0.0 0.58 1.0</span>
+          </div>
+          <svg id="morph-curve-svg" viewBox="0 0 260 260" role="img" aria-label="Easing curve editor — drag the white handles" className="w-full block rounded-xl touch-none select-none cursor-crosshair" style={{ aspectRatio: '1 / 1', background: '#05070b' }}>
+            <rect x="20" y="20" width="220" height="220" fill="#0b0f17" stroke="#1e293b" />
+            <g stroke="#1a2333" strokeWidth="1">
+              {Array.from({ length: 19 }, (_, i) => 20 + (i + 1) * 11).map((v) => (
+                <g key={v}>
+                  <line x1={v} y1="20" x2={v} y2="240" opacity={(v - 20) % 55 === 0 ? 1 : 0.45} />
+                  <line x1="20" y1={v} x2="240" y2={v} opacity={(v - 20) % 55 === 0 ? 1 : 0.45} />
+                </g>
+              ))}
+            </g>
+            <line x1="20" y1="240" x2="240" y2="20" stroke="#334155" strokeDasharray="3 5" />
+            <line id="morph-curve-playhead" x1="130" y1="20" x2="130" y2="240" stroke="#f8fafc" strokeWidth="2" strokeDasharray="6 6" opacity="0.5" />
+            <line id="morph-curve-l1" x1="20" y1="240" x2="112.4" y2="240" stroke="#f8fafc" strokeWidth="3" strokeLinecap="round" />
+            <line id="morph-curve-l2" x1="240" y1="20" x2="147.6" y2="20" stroke="#f8fafc" strokeWidth="3" strokeLinecap="round" />
+            <path id="morph-curve-path" d="M 20 240 C 112.4 240, 147.6 20, 240 20" fill="none" stroke="#2ee8a5" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="20" cy="240" r="7" fill="#2ee8a5" />
+            <circle cx="240" cy="20" r="7" fill="#2ee8a5" />
+            <circle id="morph-curve-dot" cx="130" cy="130" r="7" fill="#f8fafc" stroke="#2ee8a5" strokeWidth="3" visibility="hidden" />
+            <g id="morph-curve-h1" transform="translate(112.4 240)">
+              <circle r="30" fill="transparent" />
+              <circle r="17" fill="#ffffff" />
+            </g>
+            <g id="morph-curve-h2" transform="translate(147.6 20)">
+              <circle r="30" fill="transparent" />
+              <circle r="17" fill="#ffffff" />
+            </g>
+          </svg>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[['x1', 'Out x'], ['y1', 'Out y'], ['x2', 'In x'], ['y2', 'In y']].map(([name, label]) => (
+              <label key={name} className="block">
+                <span className="text-[9px] uppercase text-slate-500 font-bold">{label}</span>
+                <input id={`morph-curve-${name}`} type="number" step="0.01" min={name.startsWith('x') ? 0 : -1} max={name.startsWith('x') ? 1 : 2} inputMode="decimal" defaultValue={name === 'x1' ? '0.42' : name === 'y1' ? '0' : name === 'x2' ? '0.58' : '1'} className="w-full mt-0.5 bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-[11px] font-mono text-slate-100 focus:outline-none focus:border-emerald-500" />
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {[['easeInOut', 'Smooth'], ['emphasized', 'Cinematic'], ['easeOut', 'Ease out'], ['easeIn', 'Ease in'], ['linear', 'Linear']].map(([key, label]) => (
+              <button key={key} type="button" data-easing-preset={key} className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 active:scale-95 transition">{label}</button>
+            ))}
+            <button type="button" id="btn-morph-curve-mirror" title="Swap the in and out handles (play the curve backwards)" className="ml-auto px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 active:scale-95 transition flex items-center gap-1">
+              <Icon name="flip-horizontal-2" className="w-3.5 h-3.5" /> Mirror
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            Drag the white handles like in Alight Motion&apos;s graph editor — left handle shapes the start, right handle the landing. The dashed line is the playhead while the preview runs. Exports as <span className="font-mono text-slate-400">cubicBezier x1 y1 x2 y2</span>.
+          </p>
         </div>
         <label className="block">
           <span className="text-[10px] text-slate-400">Several morphs play</span>

@@ -36,6 +36,12 @@ export function DesktopRail() {
           Overlay
         </span>
       </button>
+      <button onClick={() => { actions.openCountrySearch() }} id="btn-country-rail" title="Load a country — search by name, Enter loads the first match (L)" className="flex flex-col items-center gap-1 p-2.5 w-[56px] rounded-xl text-slate-300 hover:text-indigo-300 hover:bg-slate-800 active:scale-95 transition">
+        <Icon name="globe-2" className="w-5 h-5" />
+        <span className="text-[9px] font-medium">
+          Country
+        </span>
+      </button>
       <button onClick={() => { actions.toggleDrawer('layers-drawer') }} title="Maps & Borders" className="flex flex-col items-center gap-1 p-2.5 w-[56px] rounded-xl text-slate-300 hover:text-indigo-400 hover:bg-slate-800 active:scale-95 transition">
         <Icon name="layers" className="w-5 h-5" />
         <span className="text-[9px] font-medium">

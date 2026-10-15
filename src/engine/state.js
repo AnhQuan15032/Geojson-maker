@@ -35,7 +35,8 @@ const initialState = {
   morphDuration: 1.5,
   morphHoldStart: 0.5,
   morphHoldEnd: 0.5,
-  morphEasing: 'easeInOut',
+  morphEasing: 'easeInOut', // preset key or 'custom' (graph editor)
+  morphEasingBezier: null, // custom curve [x1, y1, x2, y2]; restored from localStorage by initAnimator
   morphPingPong: false,
   morphMaxPoints: 400,
   morphIncludeOthers: false,

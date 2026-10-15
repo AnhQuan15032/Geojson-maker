@@ -1,5 +1,17 @@
 export const CHANGELOG = [
   {
+    version: '1.5.0',
+    date: '2026-10-15',
+    title: 'Graph editor for the easing, one-key country loading, load a country twice',
+    changes: [
+      'Animate panel: Alight-Motion-style graph editor — drag the two white handles, type x1 y1 x2 y2, preset chips, Mirror; a dashed playhead rides the curve while the preview runs',
+      'The custom curve previews and exports as cubicBezier x1 y1 x2 y2, printed exactly as Alight Motion prints it; it is remembered across reloads',
+      'Press L (or the Country rail button / mobile-menu entry) to jump to the country search — now the first block of the Map panel; Enter loads the first match, Esc clears, Recent chips reload in one tap',
+      'The country index is warmed during idle time at start-up and kept in Cache Storage, so the first search answers at once — also offline after the first visit; typing filters instantly',
+      'Load the same country again: each pick adds another copy (Vietnam (2), (3)…) with its own colour instead of zooming to the existing one',
+    ],
+  },
+  {
     version: '1.4.1',
     date: '2026-10-15',
     title: 'Animator — bridges start on the coast, only what changes moves, dateline shapes whole',

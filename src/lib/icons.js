@@ -15,6 +15,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   Activity,
   ArrowRightLeft,
+  ChartSpline,
+  FlipHorizontal2,
   ArrowUpNarrowWide,
   CircleStop,
   Clapperboard,
@@ -129,6 +131,8 @@ export const ICONS = {
   "menu": Menu,
   "activity": Activity,
   "arrow-right-left": ArrowRightLeft,
+  "spline": ChartSpline,
+  "flip-horizontal-2": FlipHorizontal2,
   "circle-stop": CircleStop,
   "clapperboard": Clapperboard,
   "play": Play,

@@ -26,10 +26,15 @@ import {
 } from './exporters/alightMotion.js';
 import {
   EASING_PRESETS,
+  DEFAULT_CUSTOM_BEZIER,
+  normaliseBezier,
+  presetForBezier,
   morphTimeline,
   buildMorphShapeXml,
   morphProgressAt,
+  morphSegmentAt,
 } from './exporters/alightMotionMorph.js';
+import { initEasingEditor, renderEasingEditor, setEasingPlayhead, handlesFor } from './easingEditor.js';
 import { escapeXml as escapeHtml, hexToRgbArr, rgbToHexStr } from '../lib/util.js';
 
 const $ = (id) => document.getElementById(id);
@@ -267,7 +272,8 @@ export function setMorphOption(key, value) {
   const field = OPTION_KEYS[key];
   if (!field) return;
   if (key === 'easing') {
-    S[field] = EASING_PRESETS[value] ? value : 'easeInOut';
+    S[field] = EASING_PRESETS[value] || value === 'custom' ? value : 'easeInOut';
+    renderEasingEditor(handlesFor(S[field], S.morphEasingBezier), S[field]);
   } else if (key === 'pingPong' || key === 'includeOthers' || key === 'animateColor') {
     S[field] = !!value;
   } else if (key === 'sequence') {
@@ -283,6 +289,42 @@ export function setMorphOption(key, value) {
     S.morphPreviewStart = null;
   }
   updateMorphUI();
+}
+
+const CURVE_STORAGE_KEY = 'gs.morphEasingBezier';
+
+/** Easing as the exporter and the preview consume it: a preset key, or the custom curve. */
+export function effectiveEasing() {
+  return S.morphEasing === 'custom' ? normaliseBezier(S.morphEasingBezier) : S.morphEasing;
+}
+
+/**
+ * The graph editor's curve changed (drag, typed numbers, preset chip, mirror).
+ * A curve that is exactly a preset selects that preset; anything else is
+ * 'custom'. The custom curve is remembered across reloads.
+ */
+export function setMorphEasingCurve(bezier, { live = false, preset } = {}) {
+  let b = normaliseBezier(bezier);
+  const key = preset && (EASING_PRESETS[preset] || preset === 'custom') ? preset : presetForBezier(b);
+  // a curve that lands on a preset snaps to its exact numbers (no 0.42000000000000004)
+  if (key !== 'custom' && key !== 'linear' && EASING_PRESETS[key]?.bezier) b = EASING_PRESETS[key].bezier.slice();
+  S.morphEasingBezier = b;
+  S.morphEasing = key;
+  renderEasingEditor(b, key);
+  const select = $('morph-easing');
+  if (select && select.value !== key) select.value = key;
+  if (S.morphPreviewRaf) S.morphPreviewStart = null; // restart the loop on the new curve
+  if (!live) {
+    try { localStorage.setItem(CURVE_STORAGE_KEY, JSON.stringify(b)); } catch (e) { /* storage unavailable */ }
+    updateMorphUI();
+  }
+}
+
+function restoreEasingCurve() {
+  if (Array.isArray(S.morphEasingBezier) && S.morphEasingBezier.length === 4) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(CURVE_STORAGE_KEY) || 'null'); } catch (e) { saved = null; }
+  S.morphEasingBezier = normaliseBezier(Array.isArray(saved) ? saved : DEFAULT_CUSTOM_BEZIER);
 }
 
 /** Timeline of track `index` for the current options (all tracks share totalMs). */
@@ -539,6 +581,7 @@ export function stopMorphPreview() {
     S.morphPreviewLayer = null;
   }
   S.morphPreviewStart = null;
+  setEasingPlayhead(null);
   syncPreviewButton(false);
 }
 
@@ -603,14 +646,18 @@ export function startMorphPreview() {
     const count = plan.tracks.length;
     const total = trackTimeline(0, count).totalMs;
     const ms = (now - S.morphPreviewStart) % total;
+    const easing = effectiveEasing();
     plan.tracks.forEach((t, i) => {
       const timeline = trackTimeline(i, count);
-      const u = morphProgressAt(ms, timeline, S.morphEasing, cubicBezierEase);
+      const u = morphProgressAt(ms, timeline, easing, cubicBezierEase);
       ghosts[i].setLatLngs(toLatLngs(interpolateRing(t.from, t.to, u)));
       if (S.morphAnimateColor && t.fillA !== t.fillB) {
         ghosts[i].setStyle({ fillColor: lerpColor(t.fillA, t.fillB, u) });
       }
     });
+    // the graph editor's playhead follows the first morph (time runs backwards on the way back)
+    const seg = morphSegmentAt(ms, trackTimeline(0, count));
+    setEasingPlayhead(seg ? (seg.reverse ? 1 - seg.u : seg.u) : null);
     const clock = $('morph-preview-clock');
     if (clock) clock.textContent = `${(ms / 1000).toFixed(1)}s / ${(total / 1000).toFixed(1)}s`;
     S.morphPreviewRaf = requestAnimationFrame(frame);
@@ -660,7 +707,7 @@ export function buildAlightMotionMorphXML(plan = buildMorphPlan()) {
       fillB: t.fillB,
       animateColor: !!S.morphAnimateColor,
       timeline: trackTimeline(i, count),
-      easing: S.morphEasing,
+      easing: effectiveEasing(),
     });
     counter++;
   });
@@ -866,6 +913,11 @@ export function openAnimateDrawer() {
  * Idempotent per layer group.
  */
 export function initAnimator() {
+  restoreEasingCurve();
+  if (initEasingEditor({ onChange: (b, meta) => setMorphEasingCurve(b, meta) })) {
+    renderEasingEditor(handlesFor(S.morphEasing, S.morphEasingBezier), S.morphEasing);
+    setEasingPlayhead(null);
+  }
   const group = S.drawnItems;
   if (!group || group._morphHooked) return;
   group._morphHooked = true;

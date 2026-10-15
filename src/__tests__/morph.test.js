@@ -32,6 +32,12 @@ import {
   normalisedKeys,
   buildMorphShapeXml,
   morphProgressAt,
+  morphSegmentAt,
+  easingSpec,
+  bezierEasingString,
+  normaliseBezier,
+  presetForBezier,
+  isLinearBezier,
 } from '../engine/exporters/alightMotionMorph.js';
 import { makeAlightProjection, downloadAlightMotionXML } from '../engine/exporters/alightMotion.js';
 import {
@@ -531,11 +537,11 @@ describe('Alight Motion keyframed outline XML', () => {
 
     const path = shape.querySelector('path');
     expect(path.hasAttribute('d'), 'keyed outline must not carry a static d').toBe(false);
-    const contour = path.querySelector('contour');
-    expect(contour.getAttribute('closed')).toBe('true');
-    expect(contour.hasAttribute('exclude')).toBe(false);
+    // single-contour form, exactly as Alight Motion writes it: knots straight under <path closed>
+    expect(path.getAttribute('closed')).toBe('true');
+    expect(path.querySelector('contour')).toBeNull();
 
-    const knots = contour.querySelectorAll('knot');
+    const knots = path.querySelectorAll(':scope > knot');
     expect(knots).toHaveLength(plan.pointCount);
     expect(xml).not.toContain('<in>');
     expect(xml).not.toContain('<out>');
@@ -581,6 +587,46 @@ describe('Alight Motion keyframed outline XML', () => {
       else expect(preset.e).toMatch(/^cubicBezier -?\d+(\.\d+)? -?\d+(\.\d+)? -?\d+(\.\d+)? -?\d+(\.\d+)?$/);
     }
     expect(() => buildMorphShapeXml({ id: 1, label: 'x', from: SQUARE, to: SQUARE.slice(0, 3), fillA: '#fff', timeline })).toThrow();
+  });
+
+  it('a custom curve from the graph editor exports exactly as Alight Motion writes it', () => {
+    // the easing string from a real AM 5.0 project: "cubicBezier 0.8879618 0.0 0.10184711 1.0"
+    const am = [0.8879618, 0, 0.10184711, 1];
+    expect(bezierEasingString(am)).toBe('cubicBezier 0.8879618 0.0 0.10184711 1.0');
+    expect(bezierEasingString([0.42, 0, 0.58, 1])).toBe(EASING_PRESETS.easeInOut.e);
+    expect(easingSpec(am)).toEqual({ e: 'cubicBezier 0.8879618 0.0 0.10184711 1.0', bezier: am, key: 'custom' });
+    expect(easingSpec({ bezier: [0.2, 0, 0, 1] }).key).toBe('emphasized');
+    expect(easingSpec('easeOut').e).toBe(EASING_PRESETS.easeOut.e);
+    expect(easingSpec('nope').key).toBe('easeInOut');
+    // a straight line through the handles is linear: no `e` at all
+    expect(isLinearBezier([1 / 3, 1 / 3, 2 / 3, 2 / 3])).toBe(true);
+    expect(easingSpec([0.25, 0.25, 0.75, 0.75])).toEqual({ e: null, bezier: null, key: 'linear' });
+    expect(presetForBezier([0.42, 0, 1, 1])).toBe('easeIn');
+    expect(presetForBezier(am)).toBe('custom');
+    // x handles are clamped to 0..1 (time must stay a function), y may overshoot, junk → default
+    expect(normaliseBezier([1.5, -3, -0.2, 2.5])).toEqual([1, -1, 0, 2]);
+    expect(normaliseBezier(['a', null, 0.5, 1])).toEqual([0.42, 0, 0.5, 1]);
+    expect(normaliseBezier(null)).toEqual([0.42, 0, 0.58, 1]);
+
+    const xml = buildMorphShapeXml({ id: 1, label: 'x', from: SQUARE, to: SQUARE.map(([x, y]) => [x + 10, y]), fillA: '#fff', timeline, easing: am });
+    const doc = parseXml(`<scene>${xml}</scene>`);
+    const kfs = [...doc.querySelectorAll('knot > p > kf')];
+    expect(kfs.filter((k) => k.hasAttribute('e')).map((k) => k.getAttribute('e'))).toEqual(Array(4).fill('cubicBezier 0.8879618 0.0 0.10184711 1.0'));
+    expect(buildMorphShapeXml({ id: 1, label: 'x', from: SQUARE, to: SQUARE, fillA: '#fff', timeline, easing: [0.25, 0.25, 0.75, 0.75] })).not.toContain(' e=');
+
+    // the preview follows the very same curve
+    const mid = timeline.keys[0].ms + 0.25 * 1500;
+    expect(morphProgressAt(mid, timeline, am, cubicBezierEase)).toBeCloseTo(cubicBezierEase(...am, 0.25), 9);
+    expect(morphProgressAt(mid, timeline, am, cubicBezierEase)).not.toBeCloseTo(0.25, 2); // strongly eased
+  });
+
+  it('morphSegmentAt reports the raw position inside the morph for the playhead', () => {
+    expect(morphSegmentAt(100, timeline)).toBeNull(); // hold at the start
+    expect(morphSegmentAt(500 + 750, timeline)).toEqual({ u: 0.5, reverse: false });
+    expect(morphSegmentAt(2400, timeline)).toBeNull(); // hold at the end
+    const pp = morphTimeline({ durationMs: 1000, holdStartMs: 0, holdEndMs: 0, pingPong: true });
+    expect(morphSegmentAt(250, pp)).toEqual({ u: 0.25, reverse: false });
+    expect(morphSegmentAt(1250, pp)).toEqual({ u: 0.25, reverse: true });
   });
 
   it('morphProgressAt mirrors the keyframes (holds, easing, ping-pong)', () => {
@@ -839,7 +885,9 @@ describe('animator engine', () => {
     }
     // the exported layer is a single contour
     const doc = parseXml(buildAlightMotionMorphXML(plan).xml);
-    expect(doc.querySelectorAll('shape > path > contour')).toHaveLength(1);
+    expect(doc.querySelectorAll('shape > path')).toHaveLength(1);
+    expect(doc.querySelectorAll('shape > path > contour')).toHaveLength(0);
+    expect(doc.querySelectorAll('shape > path > knot').length).toBe(t.from.length);
     expect(doc.querySelector('shape').getAttribute('label')).toBe('Archipelago → Blob');
   });
 
@@ -864,7 +912,7 @@ describe('animator engine', () => {
     expect(shape.getAttribute('label')).toBe('Box → Blob');
     expect(shape.getAttribute('endTime')).toBe('3000');
     expect(shape.getAttribute('id')).toBe('2000000001');
-    expect(shape.querySelectorAll('path > contour > knot')).toHaveLength(40);
+    expect(shape.querySelectorAll('path > knot')).toHaveLength(40);
     const kfs = shape.querySelector('knot p').querySelectorAll('kf');
     expect(kfs[0].getAttribute('t')).toBe(String((0.25 / 3).toFixed(6)));
     expect(kfs[1].getAttribute('t')).toBe('0.750000');
@@ -946,8 +994,8 @@ describe('animator engine', () => {
       expect(cap.saved).toHaveLength(1);
       const text = cap.text(0);
       expect(text.startsWith(`<?xml version='1.0' encoding='UTF-8' ?>`)).toBe(true);
-      expect(text).toContain('<path>');
-      expect(text).toContain('<contour closed="true">');
+      expect(text).toContain('<path closed="true">');
+      expect(text).not.toContain('<contour');
 
       downloadAlightMotionXML();
       expect(cap.saved).toHaveLength(2);
@@ -1023,7 +1071,7 @@ describe('animator engine', () => {
     stopMorphPreview();
     // and the export places every knot inside the canvas
     const doc = parseXml(buildAlightMotionMorphXML(plan).xml);
-    const xs = [...doc.querySelectorAll('contour > knot > p > kf')].map((kf) => Number(kf.getAttribute('v').split(',')[0]));
+    const xs = [...doc.querySelectorAll('path > knot > p > kf')].map((kf) => Number(kf.getAttribute('v').split(',')[0]));
     expect(Math.min(...xs)).toBeGreaterThanOrEqual(-1000);
     expect(Math.max(...xs)).toBeLessThanOrEqual(1000);
   });

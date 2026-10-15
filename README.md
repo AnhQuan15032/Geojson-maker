@@ -20,6 +20,29 @@ npm run check     # module-graph check + TDZ check + tests
 and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
 export. No sign-in, no storage, no cloud.
 
+## New in 1.5.0 — graph editor, one-key country loading, load a country twice
+
+- **Graph editor for the easing.** The Animate panel has an Alight-Motion-style
+  curve editor (`src/engine/easingEditor.js`): black grid, green curve, two
+  big white handles you drag (pointer events, works with a finger), typed
+  `x1 y1 x2 y2`, preset chips, *Mirror*, and a dashed playhead that sweeps the
+  curve while the preview runs. A curve that lands on a preset selects it;
+  anything else is **Custom**, remembered across reloads, previewed with the
+  same `cubicBezierEase`, and exported as `e="cubicBezier x1 y1 x2 y2"`
+  formatted the way Alight Motion prints floats (`0.8879618 0.0 0.10184711 1.0`).
+- **Countries are one key away.** `L` (rail button *Country*, mobile menu
+  *Country*) opens the Map panel on the loader — now the first block of the
+  panel — focuses the search and shows results. Typing filters instantly once
+  the index is in memory, **Enter** loads the first match, **Esc** clears.
+  The default 50 m index is fetched during idle time at start-up and kept in
+  Cache Storage (`gs-world-atlas-v1`), so the first search answers at once
+  even offline. *Recent* chips reload a country in one tap.
+- **Load the same country again.** Picking a loaded country adds another copy
+  (`Vietnam (2)`, `(3)`, …) with its own colour and its own feature object,
+  instead of zooming to the existing one — handy for before/after morphs,
+  alternative colourings or cutting one copy to the coast. Results show
+  `×2 on map · load again`.
+
 ## New in 1.4.1 — bridges on the coast, least-motion morphs, dateline shapes whole
 
 - **Bridges start on the real coast.** `prepareShape` plans the corridors on
@@ -89,7 +112,7 @@ and the shape animates on its own.
 | **No flipping / swirling** | Both rings are forced to the same winding, and the end shape's start vertex is re-chosen so the total travel distance is minimal. |
 | **No tangles** | Every candidate start vertex is simulated at 9 intermediate frames and checked for self-intersections; the first clean one (by travel distance) wins. The panel status reports `… · no tangles` or the crossing count in amber. |
 | **Timing** | Hold start → morph → hold end (defaults 0.5 s / 1.5 s / 0.5 s), optional **A → B → A**, five easing presets, optional animated fill colour, optional static layers for the other shapes. |
-| **Export** | `<shape>` → `<path>` → `<contour closed="true">` → one `<knot><p>` per point with `<kf t v [e]>` keyframes, `t` normalised to the layer's own time range, easing on the destination keyframe — the format Alight Motion's own serializer writes for an animated outline. |
+| **Export** | `<shape>` → `<path closed="true">` → one `<knot><p>` per point with `<kf t v [e]>` keyframes (knots sit directly under `<path>` for a single-contour outline, exactly as Alight Motion's own serializer writes it), `t` normalised to the layer's own time range, easing on the destination keyframe — `cubicBezier x1 y1 x2 y2` from a preset or the graph editor, nothing for linear. |
 
 Code: `src/engine/morph.js` (pure geometry), `src/engine/exporters/alightMotionMorph.js`
 (keyframe XML), `src/engine/animator.js` (state, preview, download),
@@ -332,12 +355,13 @@ the subtree while the Leaflet map stays bound to the detached first copy.
 
 `npm run check` runs three things:
 
-1. **module graph** — 79 source files, 700+ relative imports, every named
+1. **module graph** — 81 source files, 750+ relative imports, every named
    import resolves to a real export
 2. **TDZ** — no top-level initializer reads a binding from a module it is in an
    import cycle with
-3. **127 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
-   Alight Motion keyframes, animate user flow, antimeridian repair). The
+3. **132 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
+   Alight Motion keyframes, animate user flow incl. the graph editor, country
+   loader flow, antimeridian repair). The
    original three groups:
    - *parity* — loads the original monolith into a `vm` sandbox and diffs it
      against the new modules on identical inputs: colour conversions, the SVG /

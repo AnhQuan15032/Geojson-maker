@@ -140,4 +140,99 @@ describe('vector animator — user flow', () => {
     expect(S.morphTracks).toEqual([{ from: C, to: A }]);
     expect(document.getElementById('morph-from-name-0').textContent).toBe('Three');
   });
+
+  it('graph editor: drag the handles → custom curve previews, persists and exports as cubicBezier', async () => {
+    // (continues on the mounted app from the previous test)
+    const drawer = document.getElementById('animate-drawer');
+    if (!drawer.classList.contains('open')) key('a');
+    const svg = document.getElementById('morph-curve-svg');
+    const select = document.getElementById('morph-easing');
+    const h1 = document.getElementById('morph-curve-h1');
+    const h2 = document.getElementById('morph-curve-h2');
+    expect(svg).toBeTruthy();
+    expect(select.value).toBe('easeInOut');
+    const pos = (el) => (el.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/) || []).slice(1, 3).map(Number);
+    // default preset shows its handles: (0.42, 0) → plot (112.4, 240), (0.58, 1) → (147.6, 20)
+    expect(pos(h1)[0]).toBeCloseTo(20 + 0.42 * 220, 3);
+    expect(pos(h1)[1]).toBeCloseTo(240, 3);
+    expect(pos(h2)[1]).toBeCloseTo(20, 3);
+
+    // In jsdom the SVG has no layout box, so client coordinates are viewBox units.
+    const ptr = (type, x, y) => svg.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, button: 0 }));
+    // grab the second handle (nearest to the pointer) and drag it to the AM-style corner (0.1, 1)
+    ptr('pointerdown', 150, 25);
+    expect(svg.classList.contains('is-dragging')).toBe(true);
+    ptr('pointermove', 20 + 0.1 * 220, 20);
+    expect(S.morphEasing).toBe('custom');
+    expect(select.value).toBe('custom');
+    expect(S.morphEasingBezier[2]).toBeCloseTo(0.1, 6);
+    expect(S.morphEasingBezier[3]).toBeCloseTo(1, 6);
+    expect(localStorage.getItem('gs.morphEasingBezier'), 'not persisted while dragging').toBeNull();
+    ptr('pointerup', 20 + 0.1 * 220, 20);
+    expect(svg.classList.contains('is-dragging')).toBe(false);
+    expect(JSON.parse(localStorage.getItem('gs.morphEasingBezier'))[2]).toBeCloseTo(0.1, 6);
+    // the first handle: nearest-handle rule picks it when the pointer is bottom-left
+    ptr('pointerdown', 20 + 0.9 * 220, 240);
+    ptr('pointerup', 20 + 0.9 * 220, 240);
+    expect(S.morphEasingBezier[0]).toBeCloseTo(0.9, 6);
+    expect(S.morphEasingBezier[1]).toBeCloseTo(0, 6);
+    expect(document.getElementById('morph-curve-x1').value).toBe('0.9');
+    expect(document.getElementById('morph-curve-path').getAttribute('d')).toMatch(/^M 20 240 C 218 240, 42 20, 240 20$/);
+
+    // typed values are clamped and re-render the curve; dragging a handle onto a preset selects that preset
+    const y1 = document.getElementById('morph-curve-y1');
+    y1.value = '-5';
+    y1.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(S.morphEasingBezier[1]).toBe(-1);
+    document.querySelector('[data-easing-preset="easeOut"]').click();
+    expect(S.morphEasing).toBe('easeOut');
+    expect(select.value).toBe('easeOut');
+    expect(S.morphEasingBezier).toEqual([0, 0, 0.58, 1]);
+    // mirror turns ease-out into ease-in; the select follows
+    document.getElementById('btn-morph-curve-mirror').click();
+    expect(S.morphEasing).toBe('easeIn');
+    expect(S.morphEasingBezier).toEqual([0.42, 0, 1, 1]);
+    // picking from the select repaints the editor
+    select.value = 'linear';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(S.morphEasing).toBe('linear');
+    expect(pos(h1)[0]).toBeCloseTo(20 + 220 / 3, 2);
+
+    // a custom curve is what the export writes
+    ptr('pointerdown', 20 + 0.8879618 * 220, 240);
+    ptr('pointerup', 20 + 0.8879618 * 220, 240);
+    ptr('pointerdown', 20 + 0.10184711 * 220, 20);
+    ptr('pointerup', 20 + 0.10184711 * 220, 20);
+    expect(S.morphEasing).toBe('custom');
+    const parts = [];
+    const OrigBlob = globalThis.Blob;
+    globalThis.Blob = class extends OrigBlob { constructor(p, o) { super(p, o); parts.push((p || []).join('')); } };
+    try {
+      document.getElementById('btn-morph-export').click();
+    } finally {
+      globalThis.Blob = OrigBlob;
+    }
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toContain('e="cubicBezier 0.8879618 0.0 0.10184711 1.0"');
+    expect(parts[0]).not.toContain('e="cubicBezier 0.42');
+
+    // while previewing, the playhead sweeps the editor (no start hold so the first frames are inside the morph)
+    const hold = document.getElementById('morph-hold-start');
+    hold.value = '0';
+    hold.dispatchEvent(new Event('input', { bubbles: true }));
+    const playhead = document.getElementById('morph-curve-playhead');
+    const dot = document.getElementById('morph-curve-dot');
+    document.getElementById('btn-morph-preview').click();
+    await new Promise((r) => setTimeout(r, 120)); // let a few animation frames run
+    expect(playhead.getAttribute('opacity')).toBe('1');
+    expect(dot.getAttribute('visibility')).toBe('visible');
+    expect(Number(dot.getAttribute('cx'))).toBeGreaterThan(20);
+    // the dot sits on the curve: for this AM-style curve the first part moves slowly (y ≈ 0 near x = 0)
+    const u = (Number(dot.getAttribute('cx')) - 20) / 220;
+    const y = (240 - Number(dot.getAttribute('cy'))) / 220;
+    if (u < 0.3) expect(y).toBeLessThan(u);
+    key('Escape');
+    expect(playhead.getAttribute('opacity')).toBe('0.5');
+    expect(dot.getAttribute('visibility')).toBe('hidden');
+  });
 });

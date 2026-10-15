@@ -9,12 +9,18 @@
 //     startTime→endTime range (sceneTime = start + (end − start) × t);
 //   * `e="cubicBezier x1 y1 x2 y2"` goes on the DESTINATION keyframe — AM eases
 //     the segment kf[i-1]→kf[i] with kf[i]'s easing. Linear = no `e`;
-//   * a keyed outline is `<path>` (no `d`) → `<contour closed="true">` →
-//     `<knot>` → `<p>` (point) with its keyframes. `<in>`/`<out>` handles are
-//     optional and relative to `<p>`; omitting them makes straight segments,
-//     which is exactly what polygon corners want. The closing edge is implied by
-//     `closed="true"`, so the first knot is NOT repeated. Knot counts must match
-//     across keyframes — the morph geometry guarantees that;
+//   * a keyed outline is `<path closed="true">` (no `d`) → `<knot>` → `<p>`
+//     (point) with its keyframes — the single-contour form AM itself writes
+//     (a real 5.0 export: `<path closed="false"><knot><p><kf …/><kf … e="cubicBezier
+//     0.8879618 0.0 0.10184711 1.0"/></p></knot>…`); `<contour>` children are
+//     only used for multi-contour outlines, and the morph is always one ring.
+//     `<in>`/`<out>` handles are optional and relative to `<p>`; omitting them
+//     makes straight segments, which is exactly what polygon corners want. The
+//     closing edge is implied by `closed="true"`, so the first knot is NOT
+//     repeated. Knot counts must match across keyframes — the morph geometry
+//     guarantees that;
+//   * easing can be any cubic Bézier: `cubicBezier x1 y1 x2 y2` is what AM's
+//     own graph editor stores, so a custom curve exports verbatim.
 //   * `<fillColor>` is keyable too: `<fillColor><kf t v="#aarrggbb"/>…`.
 //
 // Knot coordinates are relative to the layer's <transform><location>, which we
@@ -30,6 +36,83 @@ export const EASING_PRESETS = {
   easeIn: { label: 'Ease in (slow start)', e: 'cubicBezier 0.42 0.0 1.0 1.0', bezier: [0.42, 0, 1, 1] },
   linear: { label: 'Linear (constant speed)', e: null, bezier: null },
 };
+
+/** Default curve of the graph editor (same as the Smooth preset). */
+export const DEFAULT_CUSTOM_BEZIER = [0.42, 0, 0.58, 1];
+
+/** AM's float formatting for easing strings: `0` → `0.0`, `0.42` → `0.42`, `1` → `1.0`. */
+/**
+ * Format a number the way Alight Motion's (Java) `Float.toString` does: the
+ * shortest decimal that round-trips through a 32-bit float, always with a
+ * fractional part — `0.0`, `1.0`, `0.42`, `0.8879618`, `0.10184711`.
+ */
+function amFloat(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '0.0';
+  const f = Math.fround(n);
+  let s = String(f);
+  for (let digits = 1; digits <= 9; digits++) {
+    const candidate = Number(f.toPrecision(digits));
+    if (Math.fround(candidate) === f) { s = String(candidate); break; }
+  }
+  if (s.includes('e')) s = f.toFixed(7).replace(/0+$/, '').replace(/\.$/, '.0');
+  return s.includes('.') ? s : `${s}.0`;
+}
+
+/**
+ * Normalise a cubic-Bézier easing: x handles clamped to 0..1 (time must be a
+ * function), y handles kept within −1..2 (overshoot allowed), NaN → default.
+ */
+export function normaliseBezier(bezier) {
+  const src = Array.isArray(bezier) && bezier.length === 4 ? bezier : DEFAULT_CUSTOM_BEZIER;
+  const clamp = (v, lo, hi, fallback) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(hi, Math.max(lo, n));
+  };
+  return [
+    clamp(src[0], 0, 1, DEFAULT_CUSTOM_BEZIER[0]),
+    clamp(src[1], -1, 2, DEFAULT_CUSTOM_BEZIER[1]),
+    clamp(src[2], 0, 1, DEFAULT_CUSTOM_BEZIER[2]),
+    clamp(src[3], -1, 2, DEFAULT_CUSTOM_BEZIER[3]),
+  ];
+}
+
+/** The `e` attribute for a cubic Bézier, e.g. `cubicBezier 0.42 0.0 0.58 1.0`. */
+export function bezierEasingString(bezier) {
+  const [x1, y1, x2, y2] = normaliseBezier(bezier);
+  return `cubicBezier ${amFloat(x1)} ${amFloat(y1)} ${amFloat(x2)} ${amFloat(y2)}`;
+}
+
+/** A straight line through the handles = linear (no easing attribute needed). */
+export function isLinearBezier(bezier) {
+  const [x1, y1, x2, y2] = normaliseBezier(bezier);
+  return Math.abs(x1 - y1) < 1e-9 && Math.abs(x2 - y2) < 1e-9;
+}
+
+/** Name of the preset a curve matches exactly, or 'custom'. */
+export function presetForBezier(bezier) {
+  if (isLinearBezier(bezier)) return 'linear';
+  const b = normaliseBezier(bezier);
+  for (const [key, preset] of Object.entries(EASING_PRESETS)) {
+    if (preset.bezier && preset.bezier.every((v, i) => Math.abs(v - b[i]) < 1e-6)) return key;
+  }
+  return 'custom';
+}
+
+/**
+ * Resolve an easing choice to `{ e, bezier }`: a preset key, or a custom curve
+ * given as `[x1, y1, x2, y2]` (what the graph editor produces) or `{ bezier }`.
+ */
+export function easingSpec(easing) {
+  if (Array.isArray(easing)) {
+    if (isLinearBezier(easing)) return { e: null, bezier: null, key: 'linear' };
+    return { e: bezierEasingString(easing), bezier: normaliseBezier(easing), key: presetForBezier(easing) };
+  }
+  if (easing && typeof easing === 'object' && easing.bezier) return easingSpec(easing.bezier);
+  const key = typeof easing === 'string' && EASING_PRESETS[easing] ? easing : 'easeInOut';
+  return { ...EASING_PRESETS[key], key };
+}
 
 export const DEFAULT_MORPH_TIMING = {
   durationMs: 1500,
@@ -99,7 +182,8 @@ function kfAttrs(t, v, easing, eased) {
  * @param {string} [p.fillB]     CSS hex of the end shape (defaults to fillA)
  * @param {boolean} [p.animateColor=true]  key the fill colour when A/B differ
  * @param {object} p.timeline    from morphTimeline()
- * @param {string} [p.easing='easeInOut']  key of EASING_PRESETS
+ * @param {string|number[]} [p.easing='easeInOut']  key of EASING_PRESETS, or a custom
+ *        cubic Bézier `[x1, y1, x2, y2]` from the graph editor
  * @param {number} [p.strokeWidth=0]  optional path-stroke size (px)
  * @param {string} [p.strokeColor]    CSS hex for the stroke
  */
@@ -119,7 +203,7 @@ export function buildMorphShapeXml({
   if (!from || !to || from.length !== to.length || from.length < 3) {
     throw new Error('Morph rings must have the same length (≥ 3)');
   }
-  const preset = EASING_PRESETS[easing] || EASING_PRESETS.easeInOut;
+  const preset = easingSpec(easing);
   const keys = normalisedKeys(timeline);
   const end = Math.round(timeline.totalMs);
 
@@ -159,17 +243,15 @@ export function buildMorphShapeXml({
   if (strokeWidth > 0) {
     xml += `    <path-stroke direction="centered" color="${hexToAlightColor(strokeColor || fillA, 1.0)}" size="${amFix6(strokeWidth)}" />\n`;
   }
-  xml += `    <path>\n`;
-  xml += `      <contour closed="true">\n`;
+  xml += `    <path closed="true">\n`;
   for (let i = 0; i < from.length; i++) {
     const a = `${amFix6(from[i][0] - cx)},${amFix6(from[i][1] - cy)}`;
     const b = `${amFix6(to[i][0] - cx)},${amFix6(to[i][1] - cy)}`;
-    let knot = `        <knot><p>`;
+    let knot = `      <knot><p>`;
     for (const k of keys) knot += kfAttrs(k.t, k.which === 'A' ? a : b, preset.e, k.eased);
     knot += `</p></knot>\n`;
     xml += knot;
   }
-  xml += `      </contour>\n`;
   xml += `    </path>\n`;
   xml += `  </shape>\n`;
   return xml;
@@ -191,10 +273,29 @@ export function morphProgressAt(ms, timeline, easing = 'easeInOut', ease = null)
       const span = next.ms - prev.ms;
       if (span <= 0) return valueOf(next);
       let u = (ms - prev.ms) / span;
-      const preset = EASING_PRESETS[easing] || EASING_PRESETS.easeInOut;
+      const preset = easingSpec(easing);
       if (next.eased && preset.bezier && ease) u = ease(...preset.bezier, u);
       return valueOf(prev) + (valueOf(next) - valueOf(prev)) * u;
     }
   }
   return valueOf(keys[keys.length - 1]);
+}
+
+/**
+ * Which eased segment scene time `ms` falls in: `{ u, reverse }` with `u` the
+ * raw (un-eased) 0..1 position inside that morph, `reverse` true on the way
+ * back of a ping-pong — or null during a hold. Drives the graph editor's
+ * playhead while the preview runs.
+ */
+export function morphSegmentAt(ms, timeline) {
+  const keys = timeline.keys;
+  for (let i = 1; i < keys.length; i++) {
+    const prev = keys[i - 1];
+    const next = keys[i];
+    if (!next.eased || next.which === prev.which) continue;
+    if (ms >= prev.ms && ms <= next.ms && next.ms > prev.ms) {
+      return { u: (ms - prev.ms) / (next.ms - prev.ms), reverse: next.which === 'A' };
+    }
+  }
+  return null;
 }

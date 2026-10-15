@@ -16,7 +16,7 @@ import { clearMergeSelection, highlightMergeLayer, setMergeStatus, updateCountri
 import { updateStats, updateStatsNow } from './quickTools.js';
 import { populateStyleDrawer } from './styleInspector.js';
 import { isDesktopUI } from './tutorial.js';
-import { closeDrawers, mobileHaptic, showToast } from './uiHelpers.js';
+import { closeDrawers, mobileHaptic, showToast, toggleDrawer } from './uiHelpers.js';
 
 // ================= LOAD COUNTRIES AS EDITABLE GEOJSON =================
 // Pulls the complete Natural Earth country dataset (every sovereign state
@@ -40,9 +40,20 @@ export function resetCountryIndex() {
 
 export function onCountrySearchInput() {
   clearTimeout(S.countrySearchTimer);
+  // With the index already in memory every keystroke filters instantly; the
+  // debounce only guards the first (downloading) search.
+  if (activeIndexList()) {
+    renderCountryResults();
+    return;
+  }
   S.countrySearchTimer = setTimeout(() => {
     ensureActiveIndex();
   }, 140);
+}
+
+/** The in-memory index the search box is currently filtering, if built. */
+function activeIndexList() {
+  return currentLoadMode() === 'adm1' ? S.adm1IndexCache : S.countriesIndexCache[currentCountryLevel()];
 }
 
 export function onLoadModeChange() {
@@ -132,28 +143,67 @@ export async function ensureAdm1Index() {
   return S.adm1IndexPromise;
 }
 
-export async function ensureCountryIndex() {
-  const level = document.getElementById('countries-level').value;
-  const box = document.getElementById('country-results');
-  if (box) box.classList.remove('hidden');
-  if (S.countriesIndexCache[level]) {
-    renderCountryResults();
-    return S.countriesIndexCache[level];
+/** Detail level chosen in the panel ('110m' | '50m' | '10m'). */
+export function currentCountryLevel() {
+  return (document.getElementById('countries-level') || {}).value || '50m';
+}
+
+const ATLAS_CACHE = 'gs-world-atlas-v1';
+const atlasUrls = (level) => [
+  `https://cdn.jsdelivr.net/npm/world-atlas@2/countries-${level}.json`,
+  `https://unpkg.com/world-atlas@2.0.2/countries-${level}.json`,
+];
+
+/**
+ * The world-atlas TopoJSON for a level: from the browser's Cache Storage when
+ * it has been downloaded before (instant, works offline), otherwise from the
+ * CDN — and stored for next time. Falls back to plain fetch where Cache
+ * Storage is unavailable (http://, private mode on some browsers).
+ */
+export async function fetchWorldAtlas(level) {
+  const urls = atlasUrls(level);
+  let cache = null;
+  try {
+    if (typeof caches !== 'undefined' && caches && typeof caches.open === 'function') cache = await caches.open(ATLAS_CACHE);
+  } catch (e) {
+    cache = null;
   }
+  if (cache) {
+    for (const url of urls) {
+      const hit = await cache.match(url).catch(() => null);
+      if (hit) return hit.json();
+    }
+  }
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      const r = await fetch(url);
+      if (!r || !r.ok) throw new Error(`HTTP ${r && r.status}`);
+      if (cache) {
+        try { await cache.put(url, r.clone()); } catch (e) { /* quota or opaque response — fine */ }
+      }
+      return await r.json();
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('download failed');
+}
+
+/**
+ * Build (once) the searchable index for a detail level. `silent` builds
+ * skip the progress / failure messages — used by the start-up prefetch so the
+ * first search is instant without the panel chattering while nobody looks.
+ */
+export function buildCountryIndex(level, { silent = false } = {}) {
+  if (S.countriesIndexCache[level]) return Promise.resolve(S.countriesIndexCache[level]);
   if (S.countryIndexPromises[level]) return S.countryIndexPromises[level];
+  const say = (txt, tone) => { if (!silent) setCountriesStatus(txt, tone); };
   S.countryIndexPromises[level] = (async () => {
     try {
-      if (level === '10m') setCountriesStatus('Downloading 10m index (~5 MB, one time)…', 'warn');else setCountriesStatus(`Downloading country index (${level})…`, 'warn');
+      if (level === '10m') say('Downloading 10m index (~5 MB, one time)…', 'warn');else say(`Downloading country index (${level})…`, 'warn');
       await ensureHeavyLibs();
-      let topo;
-      try {
-        const r = await fetch(`https://cdn.jsdelivr.net/npm/world-atlas@2/countries-${level}.json`);
-        if (!r.ok) throw new Error('retry');
-        topo = await r.json();
-      } catch (e) {
-        const r2 = await fetch(`https://unpkg.com/world-atlas@2.0.2/countries-${level}.json`);
-        topo = await r2.json();
-      }
+      const topo = await fetchWorldAtlas(level);
       const fc = topojson.feature(topo, topo.objects.countries);
       const feats = (fc.features || []).filter(f => f.geometry);
       const list = [];
@@ -168,24 +218,168 @@ export async function ensureCountryIndex() {
           bbox: computeGeoBbox(f.geometry)
         });
         if (i % 60 === 0) {
-          setCountriesStatus(`Indexing ${i + 1} / ${feats.length}…`, 'warn');
+          say(`Indexing ${i + 1} / ${feats.length}…`, 'warn');
           await nextTick();
         }
       }
       list.sort((a, b) => a.name.localeCompare(b.name));
       S.countriesIndexCache[level] = list;
-      setCountriesStatus(`${list.length} countries indexed — type a name to load one.`, 'ok');
-      renderCountryResults();
+      if (currentCountryLevel() === level) {
+        setCountriesStatus(`${list.length} countries ready — type a name, press Enter to load the first match.`, 'ok');
+        renderCountryResults();
+      }
       return list;
     } catch (err) {
       console.warn('Country index failed:', err);
-      setCountriesStatus('Could not download the country index — check your connection.', 'warn');
-      return [];
+      say('Could not download the country index — check your connection.', 'warn');
+      return silent ? null : [];
     } finally {
       delete S.countryIndexPromises[level];
     }
   })();
   return S.countryIndexPromises[level];
+}
+
+export async function ensureCountryIndex() {
+  const level = currentCountryLevel();
+  const box = document.getElementById('country-results');
+  if (box) box.classList.remove('hidden');
+  renderRecentCountries();
+  if (S.countriesIndexCache[level]) {
+    renderCountryResults();
+    return S.countriesIndexCache[level];
+  }
+  renderCountryResults(); // "Building the index…" placeholder
+  return buildCountryIndex(level);
+}
+
+/**
+ * Warm the default index in the background (called by bootstrap once the app
+ * is idle) so the first country search answers instantly. Skipped on
+ * data-saver connections; never shows errors.
+ */
+export function prefetchCountryIndex() {
+  try {
+    const conn = typeof navigator !== 'undefined' && navigator.connection;
+    if (conn && conn.saveData) return Promise.resolve(null);
+  } catch (e) { /* ignore */ }
+  const level = currentCountryLevel();
+  return buildCountryIndex(level, { silent: true });
+}
+
+// ---- Recent countries: one-tap reload of what you loaded before ----
+
+const RECENT_KEY = 'gs.recentCountries';
+const RECENT_MAX = 8;
+
+export function recentCountries() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(list) ? list.filter(e => e && e.id && e.name) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function rememberRecentCountry(entry, level, mode) {
+  if (!entry || !entry.id) return;
+  const next = [{ id: entry.id, name: entry.name, admin: entry.admin || '', level, mode: mode === 'adm1' ? 'adm1' : 'country' }]
+    .concat(recentCountries().filter(e => !(e.id === entry.id && e.mode === (mode === 'adm1' ? 'adm1' : 'country'))))
+    .slice(0, RECENT_MAX);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch (e) { /* storage full / unavailable */ }
+  renderRecentCountries();
+}
+
+export function clearRecentCountries() {
+  try { localStorage.removeItem(RECENT_KEY); } catch (e) { /* ignore */ }
+  renderRecentCountries();
+}
+
+export function renderRecentCountries() {
+  const host = document.getElementById('country-recent');
+  if (!host) return;
+  const list = recentCountries();
+  if (!list.length) {
+    host.innerHTML = '';
+    host.classList.add('hidden');
+    return;
+  }
+  host.classList.remove('hidden');
+  host.innerHTML = `<span class="text-[9px] uppercase font-bold text-slate-500 shrink-0">Recent</span>` + list.map((e, i) => {
+    const copies = loadedCopies(e.id).length;
+    return `<button type="button" data-recent-index="${i}" title="Load ${escapeXml(e.name)} again${copies ? ` (${copies} on the map)` : ''}" class="px-2 py-1 rounded-lg border text-[10px] font-semibold whitespace-nowrap transition ${copies ? 'bg-indigo-950/60 border-indigo-600 text-indigo-200' : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:border-indigo-500'}">${escapeXml(e.name)}${copies > 1 ? ` <span class="font-mono text-emerald-400">×${copies}</span>` : ''}</button>`;
+  }).join('') + `<button type="button" data-recent-clear="1" title="Forget the recent list" class="px-1.5 py-1 text-[10px] text-slate-500 hover:text-slate-300">✕</button>`;
+}
+
+/** Load a recent entry again — switching the detail level back to the one it was loaded at. */
+export async function loadRecentCountry(index) {
+  const e = recentCountries()[index];
+  if (!e) return;
+  const levelSel = document.getElementById('countries-level');
+  if (e.mode === 'adm1') {
+    const list = S.adm1IndexCache || await ensureAdm1Index();
+    const entry = (list || []).find(x => x.id === e.id);
+    if (entry) loadCountryFeature(entry, true);
+    return;
+  }
+  if (levelSel && e.level && levelSel.value !== e.level && ['110m', '50m', '10m'].includes(e.level)) levelSel.value = e.level;
+  const level = e.level && S.countriesIndexCache[e.level] ? e.level : currentCountryLevel();
+  const list = S.countriesIndexCache[level] || await buildCountryIndex(level);
+  const entry = (list || []).find(x => x.id === e.id) || (list || []).find(x => x.name === e.name);
+  if (!entry) {
+    showToast(`${e.name} is not in the ${level} index`);
+    return;
+  }
+  loadCountryFeature(entry, true);
+  renderCountryResults();
+}
+
+/** Copies of a country / province currently on the map. */
+export function loadedCopies(entryId) {
+  if (!S.drawnItems) return [];
+  return (S.countryLayers || []).filter(l => l && l._countryEntryId === entryId && S.drawnItems.hasLayer(l));
+}
+
+/** Enter in the search box loads the first match; Escape clears the box. */
+export function onCountrySearchKey(e) {
+  if (!e) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    clearTimeout(S.countrySearchTimer);
+    if (activeIndexList()) renderCountryResults(); // filter for what is typed right now
+    const btn = document.querySelector('#country-results [data-country-id]');
+    if (btn) loadCountryFeatureById(btn.getAttribute('data-country-id'));
+    else ensureActiveIndex().then(() => {
+      const first = document.querySelector('#country-results [data-country-id]');
+      if (first) loadCountryFeatureById(first.getAttribute('data-country-id'));
+    });
+  } else if (e.key === 'Escape') {
+    const input = document.getElementById('country-search');
+    if (input && input.value) {
+      input.value = '';
+      renderCountryResults();
+    }
+  }
+}
+
+/**
+ * Fastest way to a country: open the Map panel, bring the country search into
+ * view and focus it (which also kicks off the index). Rail button, mobile menu
+ * and the `L` shortcut all land here.
+ */
+export function openCountrySearch() {
+  const drawer = document.getElementById('layers-drawer');
+  if (drawer && !drawer.classList.contains('open')) toggleDrawer('layers-drawer');
+  const block = document.getElementById('country-loader');
+  const input = document.getElementById('country-search');
+  if (block && typeof block.scrollIntoView === 'function') {
+    try { block.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { block.scrollIntoView(); }
+  }
+  if (input) {
+    input.focus({ preventScroll: true });
+    if (input.value) input.select();
+  }
+  ensureActiveIndex().catch(() => {});
 }
 
 export function renderCountryResults() {
@@ -206,25 +400,34 @@ export function renderCountryResults() {
     return;
   }
   box.innerHTML = matches.map(e => {
-    const layer = S.countryLayerById[e.id];
-    const loaded = layer && S.drawnItems.hasLayer(layer);
+    const copies = loadedCopies(e.id).length;
+    const loaded = copies > 0;
     const label = mode === 'adm1' && e.admin ? `${e.name} — ${e.admin}` : e.name;
-    return `<button data-country-id="${e.id}" onclick="loadCountryFeatureById('${e.id}')" class="w-full p-2 rounded-xl border text-left text-xs flex items-center justify-between gap-2 transition ${loaded ? 'bg-indigo-950/60 border-indigo-600 text-indigo-200' : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-indigo-600 hover:bg-slate-800'}">
+    const tag = !loaded ? 'load' : copies === 1 ? 'loaded ✓ · load again' : `×${copies} on map · load again`;
+    return `<button type="button" data-country-id="${e.id}" class="w-full p-2 rounded-xl border text-left text-xs flex items-center justify-between gap-2 transition ${loaded ? 'bg-indigo-950/60 border-indigo-600 text-indigo-200' : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-indigo-600 hover:bg-slate-800'}">
           <span class="font-semibold truncate">${escapeXml(label)}</span>
-          <span class="text-[9px] font-mono shrink-0 ${loaded ? 'text-emerald-400' : 'text-slate-500'}">${loaded ? 'loaded ✓' : 'load'}</span>
+          <span class="text-[9px] font-mono shrink-0 ${loaded ? 'text-emerald-400' : 'text-slate-500'}">${tag}</span>
         </button>`;
   }).join('');
-  // delegated fallback handled via window.__countryLoadDelegated listener below
+  // clicks are handled once, by the delegated listener at the bottom of this file
+  renderRecentCountries();
 }
 
 export function loadCountryFeatureById(id) {
-  const level = (document.getElementById('countries-level') || {}).value || '50m';
+  const level = currentCountryLevel();
   const pools = [S.countriesIndexCache[level] || [], S.adm1IndexCache || []];
   let entry = null;
   for (let i = 0; i < pools.length && !entry; i++) entry = pools[i].find(e => e.id === id);
   if (!entry) return;
   loadCountryFeature(entry);
   renderCountryResults();
+}
+
+function cloneFeature(feature) {
+  try {
+    if (typeof structuredClone === 'function') return structuredClone(feature);
+  } catch (e) { /* fall through */ }
+  return JSON.parse(JSON.stringify(feature));
 }
 
 export function loadCountryFeature(entry, forceSingle) {
@@ -240,22 +443,18 @@ export function loadCountryFeature(entry, forceSingle) {
   // 'country' and 'adm1' both load a single feature — a province entry
   // carries its parent country in `admin`, shown in every label.
 
-  // Already loaded? Just select + zoom to it
-  const existing = S.countryLayerById[entry.id];
-  if (existing && S.drawnItems.hasLayer(existing)) {
-    S.activeSelectedLayer = existing;
-    populateStyleDrawer(existing);
-    S.map.fitBounds(existing.getBounds(), {
-      padding: [40, 40],
-      maxZoom: 9
-    });
-    showToast(`${entry.name} is already loaded — zoomed to it`);
-    return;
-  }
-  const shapeJustLoaded = true; // a brand-new shape is being added below
+  // Loading the same country again adds another copy (handy for before/after
+  // morphs, alternative colourings, or cutting one copy to the coast) — the
+  // copies are numbered so they stay apart in the layer lists.
+  const copies = loadedCopies(entry.id).length;
+  const copyName = copies ? `${entry.name} (${copies + 1})` : entry.name;
 
   const c = nextUniqueColor();
-  const layer = L.geoJSON(entry.feature, {
+  // Every copy gets its own feature object: Leaflet keeps the GeoJSON it was
+  // given as `layer.feature`, so without a clone the copies (and the index
+  // entry) would share one `properties` and overwrite each other's names.
+  const feature = cloneFeature(entry.feature);
+  const layer = L.geoJSON(feature, {
     style: {
       color: c,
       fillColor: c,
@@ -269,7 +468,8 @@ export function loadCountryFeature(entry, forceSingle) {
     return;
   }
   setupLayerProperties(layer);
-  layer.feature.properties.name = entry.name;
+  layer._countryEntryId = entry.id;
+  layer.feature.properties.name = copyName;
   layer.feature.properties.fill = c;
   layer.feature.properties.stroke = c;
   layer.feature.properties['fill-opacity'] = 1;
@@ -302,10 +502,11 @@ export function loadCountryFeature(entry, forceSingle) {
   updateStats();
   updateCountriesUI();
   if (mode === 'adm1' && entry.admin) layer.feature.properties.note = `${entry.admin} · province/state`;
-  const display = entry.admin && mode === 'adm1' ? `${entry.name} — ${entry.admin}` : entry.name;
+  const display = entry.admin && mode === 'adm1' ? `${copyName} — ${entry.admin}` : copyName;
   const typeTxt = entry.feature.geometry.type === 'MultiPolygon' ? 'multi-part polygon (islands included)' : 'polygon';
-  setCountriesStatus(`${display} loaded — ${typeTxt} · editable & exportable`, 'ok');
-  showToast(`Loaded ${display} as an editable shape`);
+  setCountriesStatus(`${display} loaded — ${typeTxt} · editable & exportable${copies ? ` · copy ${copies + 1} of ${entry.name}` : ''}`, 'ok');
+  showToast(copies ? `Loaded another ${entry.name} (copy ${copies + 1})` : `Loaded ${display} as an editable shape`);
+  rememberRecentCountry(entry, currentCountryLevel(), mode);
 
   // One-click "load countries with that coastline": refine straight away
   const refineBox = document.getElementById('country-refine');
@@ -319,9 +520,8 @@ export function loadCountryFeature(entry, forceSingle) {
   }
 
   // "Country + all its provinces": outline first, then every ADM1 unit
-  if (mode === 'adm1plus') {
-    if (shapeJustLoaded) loadAdminUnits(entry, 'ADM1');
-  }
+  // (only for the first copy — the provinces are already on the map after that)
+  if (mode === 'adm1plus' && !copies) loadAdminUnits(entry, 'ADM1');
 }
 
 // ---- Province / region loading (geoBoundaries ADM1 / ADM2) ----
@@ -641,7 +841,12 @@ export async function onSelectOnMapClick(e) {
     return;
   }
 
-  // Always a single shape from a map click, even in Districts mode
+  // Always a single shape from a map click, even in Districts mode. A second
+  // tap on the same country within half a second is a double-tap, not a
+  // request for another copy.
+  const now = Date.now();
+  if (S._lastMapPick && S._lastMapPick.id === hit.id && now - S._lastMapPick.at < 600) return;
+  S._lastMapPick = { id: hit.id, at: now };
   loadCountryFeature(hit, true);
   if (kind === 'province/state' && mode !== 'adm1') {
     showToast('Tip: set “Load as” to Provinces to browse states by name too');
@@ -757,24 +962,37 @@ export function toggleDeleteMode() {
 // turf.union. Touching regions dissolve their shared border; separated
 // ones become one MultiPolygon, so provinces → country works in one pass.
 
-// Expose globals for legacy innerHTML onclick handlers (renderCountryResults)
+// Globals kept for the legacy monolith's callers; the result and recent
+// buttons themselves are handled ONCE here by delegation (no inline onclick —
+// that used to fire the load twice, which matters now that every load adds a copy).
 if (typeof window !== 'undefined') {
   window.loadCountryFeatureById = loadCountryFeatureById;
   window.loadCountryFeature = loadCountryFeature;
-  // Delegated fallback for Load buttons — works even if inline onclick fails or CSP blocks it
   if (!window.__countryLoadDelegated) {
     window.__countryLoadDelegated = true;
     document.addEventListener('click', e => {
-      const btn = e.target.closest('[data-country-id]');
+      if (e.__countryHandled) return;
+      const target = e.target && e.target.closest ? e.target : null;
+      if (!target) return;
+      const btn = target.closest('[data-country-id]');
       if (btn && btn.closest('#country-results')) {
+        e.__countryHandled = true;
         const id = btn.getAttribute('data-country-id');
         if (id) {
-          // If inline handler already fired, this will just re-invoke idempotently; guard double-load via flag
-          if (!e.__countryHandled) {
-            e.__countryHandled = true;
-            try { loadCountryFeatureById(id); } catch {}
-          }
+          try { loadCountryFeatureById(id); } catch (err) { console.warn(err); }
         }
+        return;
+      }
+      const recent = target.closest('[data-recent-index]');
+      if (recent && recent.closest('#country-recent')) {
+        e.__countryHandled = true;
+        loadRecentCountry(Number(recent.getAttribute('data-recent-index'))).catch(() => {});
+        return;
+      }
+      const clear = target.closest('[data-recent-clear]');
+      if (clear && clear.closest('#country-recent')) {
+        e.__countryHandled = true;
+        clearRecentCountries();
       }
     });
   }

@@ -9,7 +9,7 @@ import { highlightActiveBase } from './baseMaps.js';
 import { randomizeBorderSeed } from './borderDetail.js';
 import { nextUniqueColor, setupLayerProperties } from './colors.js';
 import { LAND_SOURCES } from './constants.js';
-import { onSelectOnMapClick, removeShapeCompletely, toggleDeleteMode, toggleSelectOnMapMode, updateDeleteModeUI, updateSelectOnMapUI } from './countries.js';
+import { onSelectOnMapClick, openCountrySearch, prefetchCountryIndex, removeShapeCompletely, toggleDeleteMode, toggleSelectOnMapMode, updateDeleteModeUI, updateSelectOnMapUI } from './countries.js';
 import { cleanupDrawCurveGhost, curveLayerAllEdges, loadDrawCurvePrefs, setupDrawCurveGhost, updateDrawCurveGhost } from './curves.js';
 import { deleteSelectedOrLast, setDrawMode } from './drawTools.js';
 import { onFeatureClick } from './exporters/geojson.js';
@@ -76,6 +76,14 @@ export function startEngine() {
   initMobileAppShell();
   updateHistoryButtons();
   initGuiSettings();
+
+  // Warm the country index once the app is idle, so "Load country" answers
+  // instantly instead of downloading on the first keystroke (skipped in tests).
+  if (!(import.meta.env && import.meta.env.MODE === 'test')) {
+    const warm = () => { prefetchCountryIndex().catch(() => {}); };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(warm, { timeout: 4000 });
+    else setTimeout(warm, 2500);
+  }
 
   // Accessible names for the map surface and dynamic panels
   const mapEl = document.getElementById('map');
@@ -224,6 +232,11 @@ export function startEngine() {
         if (k === 'b') {
           e.preventDefault();
           toggleDrawer('layers-drawer');
+          return;
+        }
+        if (k === 'l') {
+          e.preventDefault();
+          openCountrySearch();
           return;
         }
         if (k === 'o') {

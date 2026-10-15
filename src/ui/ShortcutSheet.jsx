@@ -74,6 +74,14 @@ export function ShortcutSheet() {
           </div>
           <div className="flex justify-between gap-2">
             <span>
+              Load country (search box, Enter loads)
+            </span>
+            <kbd>
+              L
+            </kbd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span>
               Map & borders
             </span>
             <kbd>
