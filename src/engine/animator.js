@@ -2,10 +2,11 @@
 //
 // Flow: the user draws shapes, opens the Animate panel and fills one or more
 // morph tracks (From → To). Each track becomes one Alight Motion shape layer
-// whose outline knots are keyframed; the on-map preview plays every track as
-// a ghost polygon. Multi-part shapes (mainland + islands, holes) are joined
-// into a single outline by hair-thin bridges (see morph.js) so a country keeps
-// its islands without extra layers or borders.
+// whose outline knots are keyframed; an optional media-backed image layer and
+// keyed clipping mask follow its changing bounds. The map preview draws ghost
+// polygons plus the same image/clip transform. Multi-part shapes (mainland +
+// islands, holes) are joined into a single outline by hair-thin bridges
+// (see morph.js), so a country keeps its islands without extra layers or borders.
 //
 // Geometry lives in ./morph.js (pure), XML in ./exporters/alightMotionMorph.js
 // (pure); this file owns state, the DOM (track rows, status), the on-map
@@ -18,9 +19,11 @@ import { showToast, toggleDrawer } from './uiHelpers.js';
 import { prepareMorph, prepareShape, shareThinning, interpolateRing, cubicBezierEase } from './morph.js';
 import { rejoinAtMeridian } from './antimeridian.js';
 import {
+  ALIGHT_VIEWPORTS,
   makeAlightProjection,
   buildAlightShapeXml,
   alightSceneXml,
+  saveBlobFile,
   saveXmlFile,
   AM_BASE_ID,
 } from './exporters/alightMotion.js';
@@ -31,10 +34,13 @@ import {
   presetForBezier,
   morphTimeline,
   buildMorphShapeXml,
+  buildMorphFlagLayersXml,
+  morphFlagMediaXml,
   morphProgressAt,
   morphSegmentAt,
 } from './exporters/alightMotionMorph.js';
 import { initEasingEditor, renderEasingEditor, setEasingPlayhead, handlesFor } from './easingEditor.js';
+import { MorphFlagPreviewLayer } from './morphFlagPreview.js';
 import { escapeXml as escapeHtml, hexToRgbArr, rgbToHexStr } from '../lib/util.js';
 
 const $ = (id) => document.getElementById(id);
@@ -135,8 +141,39 @@ export function morphTracks() {
   return S.morphTracks;
 }
 
+function removeDuplicateRegionAssignments(tracks) {
+  const next = tracks.map((track) => ({ ...track }));
+  const seen = new Map();
+  for (let i = 0; i < next.length; i++) {
+    for (const slot of ['from', 'to']) {
+      const layer = next[i][slot];
+      if (!layer) continue;
+      const previous = seen.get(layer);
+      // The newest assignment wins; clear only the previous morph slot. The
+      // actual drawn Leaflet region remains on the map for reuse or deletion.
+      if (previous) next[previous.index][previous.slot] = null;
+      seen.set(layer, { index: i, slot });
+    }
+  }
+  return next;
+}
+
+function detachRegionFromOtherTracks(tracks, targetIndex, layer) {
+  let removed = false;
+  for (let i = 0; i < tracks.length; i++) {
+    if (i === targetIndex) continue;
+    for (const slot of ['from', 'to']) {
+      if (tracks[i][slot] === layer) {
+        tracks[i][slot] = null;
+        removed = true;
+      }
+    }
+  }
+  return removed;
+}
+
 function commitTracks(tracks) {
-  S.morphTracks = tracks.length ? tracks.slice() : [newTrack()];
+  S.morphTracks = removeDuplicateRegionAssignments(tracks.length ? tracks : [newTrack()]);
   if (S.morphActiveTrack >= S.morphTracks.length) S.morphActiveTrack = S.morphTracks.length - 1;
   if (S.morphActiveTrack < 0 || !Number.isFinite(S.morphActiveTrack)) S.morphActiveTrack = 0;
   S.morphPlanCache = null;
@@ -167,19 +204,21 @@ function setSlot(index, slot, layer) {
   const i = trackIndex(index);
   const other = slot === 'from' ? 'to' : 'from';
   if (tracks[i][other] === layer) tracks[i][other] = null; // a shape cannot morph into itself
+  const movedFromEarlierMorph = detachRegionFromOtherTracks(tracks, i, layer);
   tracks[i][slot] = layer;
   S.morphActiveTrack = i;
   commitTracks(tracks);
   stopMorphPreview();
   updateMorphUI();
+  return movedFromEarlierMorph;
 }
 
 /** Put the selected polygon into the From slot of a track (default: the active one). */
 export function setMorphSource(index) {
   const layer = requireSelectedPolygon();
   if (!layer) return false;
-  setSlot(index, 'from', layer);
-  showToast(`From: ${morphLayerName(layer)}`);
+  const moved = setSlot(index, 'from', layer);
+  showToast(moved ? `From: ${morphLayerName(layer)} — removed from its earlier morph slot` : `From: ${morphLayerName(layer)}`);
   return true;
 }
 
@@ -187,8 +226,8 @@ export function setMorphSource(index) {
 export function setMorphTarget(index) {
   const layer = requireSelectedPolygon();
   if (!layer) return false;
-  setSlot(index, 'to', layer);
-  showToast(`To: ${morphLayerName(layer)}`);
+  const moved = setSlot(index, 'to', layer);
+  showToast(moved ? `To: ${morphLayerName(layer)} — removed from its earlier morph slot` : `To: ${morphLayerName(layer)}`);
   return true;
 }
 
@@ -201,12 +240,16 @@ export function autoPickMorphShapes(index) {
   }
   const tracks = morphTracks().map((t) => ({ ...t }));
   const i = trackIndex(index);
-  tracks[i] = { from: polys[polys.length - 2], to: polys[polys.length - 1] };
+  const from = polys[polys.length - 2];
+  const to = polys[polys.length - 1];
+  let moved = detachRegionFromOtherTracks(tracks, i, from);
+  moved = detachRegionFromOtherTracks(tracks, i, to) || moved;
+  tracks[i] = { from, to };
   S.morphActiveTrack = i;
   commitTracks(tracks);
   stopMorphPreview();
   updateMorphUI();
-  showToast(`${morphLayerName(tracks[i].from)} → ${morphLayerName(tracks[i].to)}`);
+  showToast(`${morphLayerName(from)} → ${morphLayerName(to)}${moved ? ' — removed from earlier morph slot' : ''}`);
   return true;
 }
 
@@ -266,11 +309,15 @@ const OPTION_KEYS = {
   includeOthers: 'morphIncludeOthers',
   animateColor: 'morphAnimateColor',
   sequence: 'morphSequence',
+  viewport: 'morphViewport',
 };
 
 export function setMorphOption(key, value) {
   const field = OPTION_KEYS[key];
   if (!field) return;
+  if (key === 'viewport' && !ALIGHT_VIEWPORTS[value]) return;
+  const rebuildPreview = !!S.morphPreviewRaf && ['maxPoints', 'includeOthers', 'viewport'].includes(key);
+  if (rebuildPreview) stopMorphPreview();
   if (key === 'easing') {
     S[field] = EASING_PRESETS[value] || value === 'custom' ? value : 'easeInOut';
     renderEasingEditor(handlesFor(S[field], S.morphEasingBezier), S[field]);
@@ -278,17 +325,20 @@ export function setMorphOption(key, value) {
     S[field] = !!value;
   } else if (key === 'sequence') {
     S[field] = value === true || value === 'sequence' || value === 'true';
+  } else if (key === 'viewport') {
+    S[field] = value;
   } else {
     const n = Number(value);
     if (!Number.isFinite(n)) return;
     S[field] = n;
   }
-  if (key === 'maxPoints' || key === 'includeOthers') S.morphPlanCache = null;
+  if (key === 'maxPoints' || key === 'includeOthers' || key === 'viewport') S.morphPlanCache = null;
   // Timing changes apply live to a running preview
   if (S.morphPreviewRaf && (key === 'duration' || key === 'holdStart' || key === 'holdEnd' || key === 'pingPong' || key === 'easing' || key === 'sequence')) {
     S.morphPreviewStart = null;
   }
   updateMorphUI();
+  if (rebuildPreview) startMorphPreview();
 }
 
 const CURVE_STORAGE_KEY = 'gs.morphEasingBezier';
@@ -296,6 +346,146 @@ const CURVE_STORAGE_KEY = 'gs.morphEasingBezier';
 /** Easing as the exporter and the preview consume it: a preset key, or the custom curve. */
 export function effectiveEasing() {
   return S.morphEasing === 'custom' ? normaliseBezier(S.morphEasingBezier) : S.morphEasing;
+}
+
+const DEFAULT_MORPH_FLAG_SETTINGS = Object.freeze({
+  masked: true,
+  scaleFrom: 100,
+  scaleTo: 100,
+  offsetXFrom: 0,
+  offsetXTo: 0,
+  offsetYFrom: 0,
+  offsetYTo: 0,
+  rotationFrom: 0,
+  rotationTo: 0,
+});
+const MORPH_FLAG_IMAGE_TYPES = Object.freeze({
+  'image/png': 'PNG',
+  'image/jpeg': 'JPG',
+  'image/webp': 'WEBP',
+});
+const MORPH_FLAG_MAX_BYTES = 15 * 1024 * 1024;
+
+function readFileAs(file, method) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('Could not read image file'));
+    reader[method](file);
+  });
+}
+
+async function fileArrayBuffer(file) {
+  if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
+  return readFileAs(file, 'readAsArrayBuffer');
+}
+
+function imageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('The selected file is not a readable image'));
+    image.src = dataUrl;
+  });
+}
+
+async function sha1Hex(buffer) {
+  if (!globalThis.crypto?.subtle) throw new Error('This browser cannot create the linked Alight Motion image asset');
+  const digest = await globalThis.crypto.subtle.digest('SHA-1', buffer);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function restartPreviewIfNeeded(wasPlaying) {
+  if (!wasPlaying) return;
+  stopMorphPreview();
+  startMorphPreview();
+}
+
+/** Read a PNG/JPEG/WebP flag and create Alight Motion's content-addressed URI. */
+export async function handleMorphFlagUpload(event) {
+  const input = event?.currentTarget || event?.target || null;
+  const file = input?.files?.[0];
+  if (!file) return false;
+  const mimeType = String(file.type || '').toLowerCase();
+  const extension = MORPH_FLAG_IMAGE_TYPES[mimeType];
+  if (!extension) {
+    showToast('Choose a PNG, JPEG or WebP image');
+    if (input) input.value = '';
+    return false;
+  }
+  if (file.size > MORPH_FLAG_MAX_BYTES) {
+    showToast('Choose an image smaller than 15 MB');
+    if (input) input.value = '';
+    return false;
+  }
+
+  const uploadToken = (Number(S.morphFlagUploadToken) || 0) + 1;
+  S.morphFlagUploadToken = uploadToken;
+  try {
+    const buffer = await fileArrayBuffer(file);
+    const dataUrl = await readFileAs(file, 'readAsDataURL');
+    const [sig, image] = await Promise.all([sha1Hex(buffer), imageFromDataUrl(dataUrl)]);
+    if (uploadToken !== S.morphFlagUploadToken) return false;
+    const bytes = new Uint8Array(buffer);
+    const wasPlaying = !!S.morphPreviewRaf;
+    S.morphFlagAsset = {
+      name: file.name || 'region-image',
+      mimeType,
+      extension,
+      sig,
+      uri: `am-internal:///${sig}.${extension}`,
+      filename: `${sig}.${extension}`,
+      downloadName: `${sig}.${extension}`,
+      size: bytes.byteLength,
+      width: image.naturalWidth || image.width,
+      height: image.naturalHeight || image.height,
+      dataUrl,
+      bytes,
+      image,
+      infoUpdated: Date.now(),
+    };
+    S.morphFlagSettings = { ...DEFAULT_MORPH_FLAG_SETTINGS, ...S.morphFlagSettings };
+    restartPreviewIfNeeded(wasPlaying);
+    updateMorphUI();
+    showToast(`Image ready — ${image.naturalWidth || image.width}×${image.naturalHeight || image.height}; the export includes a matching ${extension} asset`);
+    return true;
+  } catch (error) {
+    if (uploadToken === S.morphFlagUploadToken) {
+      showToast(error?.message || 'Could not load the flag image');
+      if (input) input.value = '';
+    }
+    return false;
+  }
+}
+
+/** Set one flag transform/mask option (offsets are percentages of the region bounds). */
+export function setMorphFlagOption(key, value) {
+  const limits = {
+    scaleFrom: [10, 500], scaleTo: [10, 500],
+    offsetXFrom: [-100, 100], offsetXTo: [-100, 100],
+    offsetYFrom: [-100, 100], offsetYTo: [-100, 100],
+    rotationFrom: [-360, 360], rotationTo: [-360, 360],
+  };
+  const current = { ...DEFAULT_MORPH_FLAG_SETTINGS, ...S.morphFlagSettings };
+  if (key === 'masked') current.masked = !!value;
+  else if (limits[key]) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return;
+    current[key] = Math.min(limits[key][1], Math.max(limits[key][0], number));
+  } else return;
+  S.morphFlagSettings = current;
+  updateMorphUI();
+}
+
+/** Remove only the optional overlay asset; keep all morph tracks and map layers. */
+export function clearMorphFlag() {
+  S.morphFlagUploadToken = (Number(S.morphFlagUploadToken) || 0) + 1;
+  const wasPlaying = !!S.morphPreviewRaf;
+  S.morphFlagAsset = null;
+  const input = $('morph-flag-file');
+  if (input) input.value = '';
+  restartPreviewIfNeeded(wasPlaying);
+  updateMorphUI();
 }
 
 /**
@@ -477,16 +667,18 @@ export function buildMorphPlan({ quiet = false } = {}) {
   }
   const includeOthers = !!S.morphIncludeOthers;
   const maxPoints = Math.max(3, Number(S.morphMaxPoints) || 400);
+  const viewportKey = ALIGHT_VIEWPORTS[S.morphViewport] ? S.morphViewport : '9:16';
+  const viewport = ALIGHT_VIEWPORTS[viewportKey];
   const layers = planLayers(ready, includeOthers);
   const cut = datelineCut(layers);
   const bounds = planBounds(layers, cut);
   const signature = [
-    maxPoints, includeOthers ? 1 : 0, bounds.toBBoxString(), cut == null ? '' : cut,
+    maxPoints, includeOthers ? 1 : 0, viewportKey, bounds.toBBoxString(), cut == null ? '' : cut,
     ...ready.map((t) => `${L.stamp(t.from)}>${L.stamp(t.to)}:${geometrySignature(t.from)}:${geometrySignature(t.to)}`),
   ].join('|');
   if (S.morphPlanCache && S.morphPlanCache.signature === signature) return S.morphPlanCache;
 
-  const proj = shiftedProjection(makeAlightProjection(bounds), cut);
+  const proj = shiftedProjection(makeAlightProjection(bounds, { canvasWidth: viewport.width, canvasHeight: viewport.height }), cut);
   const tracks = [];
   for (const t of ready) {
     let shapeA;
@@ -548,6 +740,7 @@ export function buildMorphPlan({ quiet = false } = {}) {
   }
   const plan = {
     signature,
+    viewport: viewportKey,
     proj,
     bounds,
     cut,
@@ -579,6 +772,10 @@ export function stopMorphPreview() {
   if (S.morphPreviewLayer) {
     try { S.map && S.map.removeLayer(S.morphPreviewLayer); } catch (e) { /* already gone */ }
     S.morphPreviewLayer = null;
+  }
+  if (S.morphFlagPreviewLayer) {
+    try { S.map && S.map.removeLayer(S.morphFlagPreviewLayer); } catch (e) { /* already gone */ }
+    S.morphFlagPreviewLayer = null;
   }
   S.morphPreviewStart = null;
   setEasingPlayhead(null);
@@ -632,6 +829,11 @@ export function startMorphPreview() {
   });
   group.addTo(S.map);
   S.morphPreviewLayer = group;
+  if (S.morphFlagAsset?.image) {
+    const flagOverlay = new MorphFlagPreviewLayer(plan, S.morphFlagAsset.image);
+    flagOverlay.addTo(S.map);
+    S.morphFlagPreviewLayer = flagOverlay;
+  }
   S.morphPreviewStart = null;
   syncPreviewButton(true);
 
@@ -647,14 +849,18 @@ export function startMorphPreview() {
     const total = trackTimeline(0, count).totalMs;
     const ms = (now - S.morphPreviewStart) % total;
     const easing = effectiveEasing();
+    const flagFrames = [];
     plan.tracks.forEach((t, i) => {
       const timeline = trackTimeline(i, count);
       const u = morphProgressAt(ms, timeline, easing, cubicBezierEase);
-      ghosts[i].setLatLngs(toLatLngs(interpolateRing(t.from, t.to, u)));
+      const ring = interpolateRing(t.from, t.to, u);
+      ghosts[i].setLatLngs(toLatLngs(ring));
+      flagFrames.push({ ring, u });
       if (S.morphAnimateColor && t.fillA !== t.fillB) {
         ghosts[i].setStyle({ fillColor: lerpColor(t.fillA, t.fillB, u) });
       }
     });
+    if (S.morphFlagPreviewLayer) S.morphFlagPreviewLayer.setFrames(flagFrames, S.morphFlagSettings);
     // the graph editor's playhead follows the first morph (time runs backwards on the way back)
     const seg = morphSegmentAt(ms, trackTimeline(0, count));
     setEasingPlayhead(seg ? (seg.reverse ? 1 - seg.u : seg.u) : null);
@@ -696,6 +902,7 @@ export function buildAlightMotionMorphXML(plan = buildMorphPlan()) {
       }
     });
   }
+  const staticLayers = counter;
   // Animated layers go last = on top (AM lists layers bottom→top)
   plan.tracks.forEach((t, i) => {
     shapesXml += buildMorphShapeXml({
@@ -711,17 +918,44 @@ export function buildAlightMotionMorphXML(plan = buildMorphPlan()) {
     });
     counter++;
   });
+
+  const flagAsset = S.morphFlagAsset;
+  const flagSettings = { ...DEFAULT_MORPH_FLAG_SETTINGS, ...S.morphFlagSettings };
+  let flagLayers = 0;
+  if (flagAsset?.uri) {
+    plan.tracks.forEach((t, i) => {
+      const id = AM_BASE_ID + counter + 1;
+      shapesXml += buildMorphFlagLayersXml({
+        id,
+        label: `${t.nameA} → ${t.nameB} image`,
+        from: t.from,
+        to: t.to,
+        timeline: trackTimeline(i, count),
+        easing: effectiveEasing(),
+        mediaUri: flagAsset.uri,
+        masked: flagSettings.masked,
+        settings: flagSettings,
+      });
+      const layersForTrack = flagSettings.masked ? 2 : 1;
+      counter += layersForTrack;
+      flagLayers += layersForTrack;
+    });
+  }
+
   return {
     xml: alightSceneXml(shapesXml, {
       canvasWidth: plan.proj.canvasWidth,
       canvasHeight: plan.proj.canvasHeight,
       totalTime: totalMs,
       title: 'Vector Morph Project',
+      mediaXml: morphFlagMediaXml(flagAsset),
     }),
     timeline: trackTimeline(0, count),
     totalMs,
     tracks: count,
-    staticLayers: counter - count,
+    staticLayers,
+    flagLayers,
+    flagAsset: flagAsset || null,
   };
 }
 
@@ -730,10 +964,18 @@ export function downloadAlightMotionMorph() {
   if (!plan) return false;
   const built = buildAlightMotionMorphXML(plan);
   if (!built) return false;
+  const asset = built.flagAsset;
+  const sidecarReady = !!(asset?.bytes && asset.bytes.byteLength);
+  if (sidecarReady) {
+    saveBlobFile(new Blob([asset.bytes], { type: asset.mimeType || 'application/octet-stream' }), asset.filename || asset.downloadName);
+  }
   saveXmlFile(built.xml, `alightmotion_morph_${Date.now()}.xml`);
   const points = plan.tracks.reduce((n, t) => n + t.meta.pointCount, 0);
   const extra = built.staticLayers ? ` + ${built.staticLayers} static layer${built.staticLayers === 1 ? '' : 's'}` : '';
-  showToast(`Alight Motion animation downloaded — ${built.tracks} morph${built.tracks === 1 ? '' : 's'}, ${points} keyframed points${extra}`);
+  const linkedImage = sidecarReady
+    ? ` · ${asset.filename || asset.downloadName} saved too; import it into Alight Motion first (media linking not app-tested)`
+    : asset ? ' XML downloaded; the linked image asset is missing' : '';
+  showToast(`Alight Motion animation downloaded — ${built.tracks} morph${built.tracks === 1 ? '' : 's'}, ${points} keyframed points${extra}${linkedImage}`);
   return true;
 }
 
@@ -808,12 +1050,55 @@ function onTracksClick(e) {
   else if (action === 'remove') removeMorphTrack(index);
 }
 
+const FLAG_CONTROL_IDS = {
+  scaleFrom: 'morph-flag-scale-from',
+  scaleTo: 'morph-flag-scale-to',
+  offsetXFrom: 'morph-flag-x-from',
+  offsetXTo: 'morph-flag-x-to',
+  offsetYFrom: 'morph-flag-y-from',
+  offsetYTo: 'morph-flag-y-to',
+  rotationFrom: 'morph-flag-rotation-from',
+  rotationTo: 'morph-flag-rotation-to',
+};
+
+function renderMorphFlagUI() {
+  const asset = S.morphFlagAsset;
+  const settings = { ...DEFAULT_MORPH_FLAG_SETTINGS, ...S.morphFlagSettings };
+  const image = $('morph-flag-thumbnail');
+  const name = $('morph-flag-name');
+  const clear = $('btn-clear-morph-flag');
+  const controls = $('morph-flag-transform-controls');
+  if (image) {
+    image.hidden = !asset;
+    if (asset && image.src !== asset.dataUrl) image.src = asset.dataUrl;
+    if (!asset) image.removeAttribute('src');
+  }
+  if (name) name.textContent = asset
+    ? `${asset.name} · ${asset.width}×${asset.height} · ${asset.extension}`
+    : 'No image selected';
+  if (clear) clear.hidden = !asset;
+  if (controls) controls.hidden = !asset;
+  const mask = $('morph-flag-mask');
+  if (mask) mask.checked = settings.masked !== false;
+  for (const [key, id] of Object.entries(FLAG_CONTROL_IDS)) {
+    const input = $(id);
+    if (input && document.activeElement !== input) input.value = String(settings[key]);
+  }
+  const viewport = $('morph-viewport');
+  if (viewport) viewport.value = ALIGHT_VIEWPORTS[S.morphViewport] ? S.morphViewport : '9:16';
+  const exportLabel = $('morph-export-label');
+  if (exportLabel) exportLabel.textContent = asset ? 'Export animation + image asset' : 'Export Alight Motion animation (.xml)';
+}
+
 export function updateMorphUI() {
   const drawer = $('animate-drawer');
   if (!drawer) return;
   const tracks = morphTracks();
-  // forget shapes that left the map
-  const cleaned = tracks.map((t) => ({ from: layerAlive(t.from) ? t.from : null, to: layerAlive(t.to) ? t.to : null }));
+  // Forget shapes that left the map and prevent one region occupying two morph slots.
+  const cleaned = removeDuplicateRegionAssignments(tracks.map((t) => ({
+    from: layerAlive(t.from) ? t.from : null,
+    to: layerAlive(t.to) ? t.to : null,
+  })));
   if (cleaned.some((t, i) => t.from !== tracks[i].from || t.to !== tracks[i].to)) commitTracks(cleaned);
 
   const host = $('morph-tracks');
@@ -822,6 +1107,7 @@ export function updateMorphUI() {
     host.addEventListener('click', onTracksClick);
   }
   renderTracks();
+  renderMorphFlagUI();
 
   const ready = completeTracks();
   ['btn-morph-preview', 'btn-morph-export'].forEach((id) => {

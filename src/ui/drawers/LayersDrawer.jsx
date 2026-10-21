@@ -194,6 +194,21 @@ export function LayersDrawer() {
           Search a name to load that exact country — arrives as one editable shape with its real border. Load it again for another copy.
         </div>
       </div>
+      <section className="mb-4">
+        <label className="text-[11px] font-semibold text-slate-400 uppercase mb-2 block">
+          Selected Shape
+        </label>
+        <button
+          id="btn-duplicate-selected-shape-layers"
+          type="button"
+          onClick={() => { actions.duplicateSelectedShape() }}
+          title="Duplicate the selected shape with its current appearance (Ctrl+D)"
+          className="w-full p-2.5 bg-indigo-600/90 hover:bg-indigo-500 border border-indigo-400/40 rounded-xl text-[11px] font-bold text-white flex items-center justify-center gap-2 active:scale-[.99] transition"
+        >
+          <Icon name="copy-plus" className="w-4 h-4" />
+          Duplicate selected
+        </button>
+      </section>
       <label className="text-[11px] font-semibold text-slate-400 uppercase mb-2 block">
         Base Map Layer
       </label>

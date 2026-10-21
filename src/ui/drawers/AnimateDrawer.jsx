@@ -42,7 +42,55 @@ export function AnimateDrawer() {
         <p id="morph-status" className="text-[10px] text-slate-400 leading-relaxed">
           Draw two polygons: the first is the start, the second is what it turns into.
         </p>
+        <p className="text-[9px] text-slate-500 leading-relaxed">A drawn region can belong to only one morph. Reusing it clears its older From/To slot; the map layer itself stays drawn.</p>
       </div>
+
+      {/* Optional image / flag overlay — media is exported as a matching sidecar file. */}
+      <section className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/70 space-y-3 mt-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+            <Icon name="image" className="w-3.5 h-3.5 text-violet-300" />
+            Region image / flag
+          </span>
+          <span className="text-[9px] uppercase tracking-wide text-slate-500">Optional</span>
+        </div>
+        <p className="text-[10px] text-slate-400 leading-relaxed">
+          Add a bitmap that follows every animated region. Size, position offsets and rotation are keyframed from each morph&apos;s start to end.
+        </p>
+        <label className="block">
+          <span className="sr-only">Choose a flag image</span>
+          <input id="morph-flag-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => { actions.handleMorphFlagUpload(e) }} className="block w-full text-[10px] text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-[10px] file:font-bold file:text-white hover:file:bg-violet-500" />
+        </label>
+        <div className="flex items-center gap-2 min-w-0">
+          <img id="morph-flag-thumbnail" alt="Selected region image preview" hidden className="w-10 h-10 rounded-lg object-cover border border-slate-600 bg-slate-950" />
+          <span id="morph-flag-name" className="flex-1 min-w-0 truncate text-[10px] text-slate-300">No image selected</span>
+          <button id="btn-clear-morph-flag" type="button" onClick={() => { actions.clearMorphFlag() }} hidden className="px-2 py-1.5 rounded-lg bg-slate-700 hover:bg-rose-600/80 text-[10px] font-bold text-slate-100">Remove</button>
+        </div>
+        <div id="morph-flag-transform-controls" hidden className="space-y-3 border-t border-slate-700/80 pt-3">
+          <label className="flex items-center justify-between gap-2 cursor-pointer">
+            <span className="text-[10px] text-slate-200">Mask image to the morphing region</span>
+            <input id="morph-flag-mask" type="checkbox" defaultChecked onChange={(e) => { actions.setMorphFlagOption('masked', e.currentTarget.checked) }} className="w-4 h-4 accent-violet-500 rounded" />
+          </label>
+          <p className="text-[9px] text-slate-500 leading-relaxed">Offsets are percentages of the region&apos;s bounding box (+X right, +Y down). Scale is relative to the region&apos;s width and height.</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[
+              { suffix: 'from', title: 'At From shape', fields: [['scale', 'Scale (%)', 10, 500, 5, 100], ['x', 'X offset (%)', -100, 100, 1, 0], ['y', 'Y offset (%)', -100, 100, 1, 0], ['rotation', 'Rotation (°)', -360, 360, 1, 0]] },
+              { suffix: 'to', title: 'At To shape', fields: [['scale', 'Scale (%)', 10, 500, 5, 100], ['x', 'X offset (%)', -100, 100, 1, 0], ['y', 'Y offset (%)', -100, 100, 1, 0], ['rotation', 'Rotation (°)', -360, 360, 1, 0]] },
+            ].map((group) => (
+              <div key={group.suffix} className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-2 space-y-2">
+                <h4 className="text-[9px] uppercase tracking-wide font-bold text-violet-300">{group.title}</h4>
+                {group.fields.map(([field, label, min, max, step, initial]) => (
+                  <label key={field} className="block">
+                    <span className="text-[9px] text-slate-400">{label}</span>
+                    <input id={`morph-flag-${field}-${group.suffix}`} type="number" min={min} max={max} step={step} defaultValue={initial} inputMode="decimal" onInput={(e) => { actions.setMorphFlagOption(`${field === 'x' ? 'offsetX' : field === 'y' ? 'offsetY' : field}${group.suffix === 'from' ? 'From' : 'To'}`, e.currentTarget.value) }} className="w-full mt-0.5 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] font-mono text-slate-100 focus:outline-none focus:border-violet-500" />
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
+          <p className="text-[9px] text-amber-200/80 leading-relaxed">Export downloads the XML plus a matching image file. Import the image into Alight Motion first; the XML links to the asset rather than embedding its bytes. Media linking and mask rendering still need in-app verification.</p>
+        </div>
+      </section>
 
       {/* Timing */}
       <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/70 space-y-3 mt-3">
@@ -99,6 +147,17 @@ export function AnimateDrawer() {
             </select>
           </label>
         </div>
+        <label className="block">
+          <span className="text-[10px] text-slate-400">Alight Motion canvas / viewport</span>
+          <select id="morph-viewport" defaultValue="9:16" onChange={(e) => { actions.setMorphOption('viewport', e.currentTarget.value) }} className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg px-1.5 py-1.5 text-[10px] text-slate-200 focus:outline-none focus:border-violet-500">
+            <option value="9:16">9:16 · Portrait — 1080 × 1920</option>
+            <option value="4:5">4:5 · Portrait — 1080 × 1350</option>
+            <option value="1:1">1:1 · Square — 1080 × 1080</option>
+            <option value="4:3">4:3 · Landscape — 1440 × 1080</option>
+            <option value="3:2">3:2 · Landscape — 1620 × 1080</option>
+            <option value="16:9">16:9 · Widescreen — 1920 × 1080</option>
+          </select>
+        </label>
         {/* Graph editor — the curve Alight Motion will play (cubicBezier x1 y1 x2 y2) */}
         <div id="morph-curve-editor" className="rounded-2xl border border-slate-700/80 bg-slate-950 p-2.5 space-y-2">
           <div className="flex items-center justify-between gap-2">
@@ -189,11 +248,11 @@ export function AnimateDrawer() {
         </button>
         <button id="btn-morph-export" onClick={() => { actions.downloadAlightMotionMorph() }} className="p-3.5 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-violet-950/50 transition">
           <Icon name="film" className="w-4 h-4" />
-          {' Export Alight Motion animation (.xml) '}
+          <span id="morph-export-label">Export Alight Motion animation (.xml)</span>
         </button>
       </div>
       <p className="text-[10px] text-slate-500 leading-relaxed mt-3">
-        The export is a 1080×1920 Alight Motion project in <b className="text-slate-400">Web Mercator</b> (the map's own projection, so the
+        The export uses the selected Alight Motion canvas in <b className="text-slate-400">Web Mercator</b> (the map's own projection, so the
         shapes look exactly as on screen) with one shape layer per morph whose outline points are keyframed
         (<code className="text-slate-400">&lt;path&gt;&lt;contour&gt;&lt;knot&gt;&lt;p&gt;&lt;kf…</code>) — open it in Alight Motion and the shapes
         morph on their own; you can still move the keyframes or change the easing there.

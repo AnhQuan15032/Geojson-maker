@@ -1,6 +1,6 @@
 // Vector auto-animator — geometry, Alight Motion keyframe XML and the
 // engine glue (slots → preview → export) with real Leaflet layers.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import './setup.js';
 import L from 'leaflet';
@@ -31,6 +31,8 @@ import {
   morphTimeline,
   normalisedKeys,
   buildMorphShapeXml,
+  buildMorphFlagLayersXml,
+  morphFlagMediaXml,
   morphProgressAt,
   morphSegmentAt,
   easingSpec,
@@ -43,6 +45,9 @@ import { makeAlightProjection, downloadAlightMotionXML } from '../engine/exporte
 import {
   setMorphSource,
   setMorphTarget,
+  handleMorphFlagUpload,
+  setMorphFlagOption,
+  clearMorphFlag,
   autoPickMorphShapes,
   swapMorphEnds,
   addMorphTrack,
@@ -563,6 +568,76 @@ describe('Alight Motion keyframed outline XML', () => {
     expect(shape.querySelectorAll('kf').length).toBe(plan.pointCount * 2);
   });
 
+  it('exports a region-following image with size, offset, rotation, and an exact keyed clipping mask', () => {
+    const from = [[0, 0], [100, 0], [100, 50], [0, 50]];
+    const to = [[20, 10], [220, 10], [220, 110], [20, 110]];
+    const flagTimeline = morphTimeline({ durationMs: 1000, holdStartMs: 0, holdEndMs: 0 });
+    const xml = buildMorphFlagLayersXml({
+      id: 2000000020,
+      label: 'Flag & region',
+      from,
+      to,
+      timeline: flagTimeline,
+      easing: 'linear',
+      mediaUri: 'am-internal:///ABC123.PNG',
+      masked: true,
+      settings: { scaleFrom: 100, scaleTo: 50, offsetXFrom: 10, offsetXTo: -10, offsetYFrom: 0, offsetYTo: 20, rotationFrom: 15, rotationTo: 45 },
+    });
+    const doc = parseXml(`<scene>${xml}</scene>`);
+    const image = doc.querySelector('shape[fillType="media"]');
+    const mask = doc.querySelector('shape[clippingMask="true"]');
+    expect(doc.querySelectorAll('shape')).toHaveLength(2);
+    expect(image.getAttribute('label')).toBe('Flag & region');
+    expect(image.getAttribute('fillImage')).toBe('am-internal:///ABC123.PNG');
+    expect(image.getAttribute('mediaFillMode')).toBe('stretch');
+    expect(image.getAttribute('s')).toBe('.rect');
+    const locationKfs = [...image.querySelectorAll('transform > location > kf')];
+    const rotationKfs = [...image.querySelectorAll('transform > rotation > kf')];
+    const sizeKfs = [...image.querySelectorAll('property[name="size"] > kf')];
+    expect(locationKfs).toHaveLength(21); // 20 subdivisions follow changing extrema between endpoints
+    expect(locationKfs[0].getAttribute('v')).toBe('60.000000,25.000000,0.000000');
+    expect(locationKfs.at(-1).getAttribute('v')).toBe('100.000000,80.000000,0.000000');
+    expect(rotationKfs[0].getAttribute('v')).toBe('15.000000');
+    expect(rotationKfs.at(-1).getAttribute('v')).toBe('45.000000');
+    expect(sizeKfs[0].getAttribute('v')).toBe('100.000000,50.000000');
+    expect(sizeKfs.at(-1).getAttribute('v')).toBe('100.000000,50.000000');
+    expect([...locationKfs, ...rotationKfs, ...sizeKfs].every((kf) => !kf.hasAttribute('e'))).toBe(true);
+    expect(mask.querySelectorAll('path > knot')).toHaveLength(from.length);
+    expect(mask.querySelector('path > knot > p > kf').getAttribute('v')).toBe('-110.000000,-55.000000');
+    expect(mask.querySelector('path > knot > p > kf:nth-child(2)').getAttribute('v')).toBe('-90.000000,-45.000000');
+  });
+
+  it('can leave the image unmasked and uses the shortest rotation path', () => {
+    const from = [[0, 0], [100, 0], [100, 100], [0, 100]];
+    const to = from.map(([x, y]) => [x + 50, y + 20]);
+    const xml = buildMorphFlagLayersXml({
+      id: 10, label: 'Unmasked flag', from, to,
+      timeline: morphTimeline({ durationMs: 1000, holdStartMs: 0, holdEndMs: 0 }),
+      mediaUri: 'am-internal:///F00D.PNG', masked: false,
+      settings: { rotationFrom: 170, rotationTo: -170 },
+    });
+    const doc = parseXml(`<scene>${xml}</scene>`);
+    expect(doc.querySelectorAll('shape')).toHaveLength(1);
+    expect(doc.querySelector('shape').hasAttribute('clippingMask')).toBe(false);
+    const rotations = [...doc.querySelectorAll('rotation > kf')];
+    expect(rotations[0].getAttribute('v')).toBe('170.000000');
+    expect(rotations.at(-1).getAttribute('v')).toBe('190.000000');
+  });
+
+  it('writes the linked image media metadata without pretending the XML embeds image bytes', () => {
+    const xml = morphFlagMediaXml({
+      uri: 'am-internal:///DEADBEEF.PNG', filename: 'DEADBEEF.PNG', sig: 'DEADBEEF',
+      mimeType: 'image/png', size: 42, width: 16, height: 9, infoUpdated: 123,
+    });
+    const doc = parseXml(`<scene>${xml}</scene>`);
+    const media = doc.querySelector('media');
+    expect(media.getAttribute('uri')).toBe('am-internal:///DEADBEEF.PNG');
+    expect(media.getAttribute('type')).toBe('image/png');
+    expect(media.getAttribute('width')).toBe('16');
+    expect(media.getAttribute('height')).toBe('9');
+    expect(xml).not.toContain('data:image/');
+  });
+
   it('keys the fill colour when the two shapes differ, and ping-pong adds the return keyframes', () => {
     const plan = prepareMorph(SQUARE, star(), { minPoints: 3 });
     const pp = morphTimeline({ durationMs: 1000, holdStartMs: 0, holdEndMs: 500, pingPong: true });
@@ -721,6 +796,8 @@ describe('animator engine', () => {
   let A;
   let B;
   let C;
+  let D;
+  let E;
 
   beforeEach(() => {
     const map = sharedMap();
@@ -740,10 +817,15 @@ describe('animator engine', () => {
     S.morphMaxPoints = 400;
     S.morphIncludeOthers = false;
     S.morphAnimateColor = true;
+    S.morphViewport = '9:16';
+    S.morphFlagAsset = null;
+    S.morphFlagSettings = { masked: true, scaleFrom: 100, scaleTo: 100, offsetXFrom: 0, offsetXTo: 0, offsetYFrom: 0, offsetYTo: 0, rotationFrom: 0, rotationTo: 0 };
     S.activeSelectedLayer = null;
     A = poly([[51.50, -0.20], [51.50, -0.10], [51.56, -0.10], [51.56, -0.20]], 'Box', '#10b981');
     B = poly(regularPolygon(40, 0.04, -0.05, 51.53).map(([lng, lat]) => [lat, lng]), 'Blob', '#f59e0b');
     C = poly([[51.40, -0.30], [51.40, -0.28], [51.42, -0.28]], 'Bystander', '#3b82f6');
+    D = null;
+    E = null;
   });
 
   afterEach(() => {
@@ -791,30 +873,81 @@ describe('animator engine', () => {
     expect(track().to).toBe(C); // last drawn
   });
 
+  it('hashes an uploaded flag to an Alight Motion media URI and updates mask/transform settings', async () => {
+    const originalImage = globalThis.Image;
+    const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    globalThis.Image = class FakeImage {
+      constructor() { this.naturalWidth = 80; this.naturalHeight = 40; this.complete = false; }
+      set src(value) {
+        this._src = value;
+        this.complete = true;
+        queueMicrotask(() => this.onload?.());
+      }
+      get src() { return this._src; }
+    };
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { subtle: { digest: vi.fn(async () => new Uint8Array(20).fill(0xab).buffer) } },
+    });
+    try {
+      const file = new File([new Uint8Array([1, 2, 3])], 'flag.png', { type: 'image/png' });
+      const input = { files: [file], value: '' };
+      expect(await handleMorphFlagUpload({ currentTarget: input })).toBe(true);
+      expect(S.morphFlagAsset.uri).toBe(`am-internal:///${'AB'.repeat(20)}.PNG`);
+      expect(S.morphFlagAsset.filename).toBe(`${'AB'.repeat(20)}.PNG`);
+      expect(S.morphFlagAsset.width).toBe(80);
+      expect([...S.morphFlagAsset.bytes]).toEqual([1, 2, 3]);
+      setMorphFlagOption('masked', false);
+      setMorphFlagOption('scaleTo', 125);
+      setMorphFlagOption('offsetXTo', -20);
+      setMorphFlagOption('rotationTo', 35);
+      expect(S.morphFlagSettings).toMatchObject({ masked: false, scaleTo: 125, offsetXTo: -20, rotationTo: 35 });
+      clearMorphFlag();
+      expect(S.morphFlagAsset).toBeNull();
+    } finally {
+      globalThis.Image = originalImage;
+      if (originalCrypto) Object.defineProperty(globalThis, 'crypto', originalCrypto);
+      else delete globalThis.crypto;
+    }
+  });
+
+  it('moves a reused region out of its older morph slot without deleting the drawn layer', () => {
+    D = poly([[51.60, -0.18], [51.60, -0.15], [51.63, -0.15], [51.63, -0.18]], 'Target D', '#ef4444');
+    setTracks([A, B], [C, D]);
+    S.activeSelectedLayer = A;
+    expect(setMorphSource(1)).toBe(true);
+    expect(track(0)).toEqual({ from: null, to: B });
+    expect(track(1)).toEqual({ from: A, to: D });
+    expect(completeTracks()).toHaveLength(1);
+    expect(S.drawnItems.hasLayer(A)).toBe(true);
+  });
+
   it('tracks can be added, filled independently, removed and cleared', () => {
+    D = poly([[51.60, -0.18], [51.60, -0.15], [51.63, -0.15], [51.63, -0.18]], 'Target D', '#ef4444');
+    E = poly([[51.35, -0.25], [51.35, -0.21], [51.38, -0.21], [51.38, -0.25]], 'Target E', '#a855f7');
     setTracks([A, B]);
     expect(addMorphTrack()).toBe(1);
     expect(S.morphTracks).toHaveLength(2);
     expect(S.morphActiveTrack).toBe(1);
     expect(document.querySelectorAll('#morph-tracks .morph-track')).toHaveLength(2);
-    // "Use selected" on the new (active) track leaves track 0 alone
+    // "Use selected" on the new (active) track leaves track 0 alone when the regions are unique.
     S.activeSelectedLayer = C;
     setMorphSource();
-    S.activeSelectedLayer = A;
+    S.activeSelectedLayer = D;
     setMorphTarget(1);
     expect(track(0)).toEqual({ from: A, to: B });
-    expect(track(1)).toEqual({ from: C, to: A });
+    expect(track(1)).toEqual({ from: C, to: D });
     expect(completeTracks()).toHaveLength(2);
     expect(slotName(1, 'from')).toBe('Bystander');
     // explicit index targets a track that is not active
-    S.activeSelectedLayer = C;
+    S.activeSelectedLayer = E;
     setMorphTarget(0);
-    expect(track(0)).toEqual({ from: A, to: C });
+    expect(track(0)).toEqual({ from: A, to: E });
     swapMorphEnds(0);
-    expect(track(0)).toEqual({ from: C, to: A });
+    expect(track(0)).toEqual({ from: E, to: A });
     removeMorphTrack(0);
     expect(S.morphTracks).toHaveLength(1);
-    expect(track(0)).toEqual({ from: C, to: A });
+    expect(track(0)).toEqual({ from: C, to: D });
     expect(S.morphActiveTrack).toBe(0);
     // removing the last track just empties it
     removeMorphTrack(0);
@@ -823,6 +956,40 @@ describe('animator engine', () => {
     setTracks([A, B], [B, C]);
     clearMorph();
     expect(S.morphTracks).toEqual([{ from: null, to: null }]);
+  });
+
+  it('shows and removes the optional image-following map preview layer', () => {
+    const canvas = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      setTransform() {}, clearRect() {},
+    });
+    try {
+      setTracks([A, B]);
+      S.morphFlagAsset = { image: { complete: true } };
+      expect(startMorphPreview()).toBe(true);
+      expect(S.morphFlagPreviewLayer).toBeTruthy();
+      expect(S.map.hasLayer(S.morphFlagPreviewLayer)).toBe(true);
+      stopMorphPreview();
+      expect(S.morphFlagPreviewLayer).toBeNull();
+    } finally {
+      canvas.mockRestore();
+    }
+  });
+
+  it('uses the chosen viewport for both morph fitting and the Alight Motion scene header', () => {
+    setTracks([A, B]);
+    setMorphOption('viewport', '4:5');
+    const portrait = buildMorphPlan();
+    expect(portrait.viewport).toBe('4:5');
+    expect(portrait.proj.canvasWidth).toBe(1080);
+    expect(portrait.proj.canvasHeight).toBe(1350);
+    const scene = parseXml(buildAlightMotionMorphXML(portrait).xml).querySelector('scene');
+    expect(scene.getAttribute('width')).toBe('1080');
+    expect(scene.getAttribute('height')).toBe('1350');
+    setMorphOption('viewport', '16:9');
+    const landscape = buildMorphPlan();
+    expect(landscape).not.toBe(portrait);
+    expect(landscape.proj.canvasWidth).toBe(1920);
+    expect(landscape.proj.canvasHeight).toBe(1080);
   });
 
   it('buildMorphPlan matches counts, keeps the drawn vertices and reports no tangles', () => {
@@ -942,6 +1109,24 @@ describe('animator engine', () => {
     expect(all[1].getAttribute('id')).toBe('2000000002');
   });
 
+  it('adds the linked flag media and image/mask layers to the full morph scene', () => {
+    setTracks([A, B]);
+    S.morphFlagAsset = {
+      uri: 'am-internal:///ABCD1234.PNG', filename: 'ABCD1234.PNG', sig: 'ABCD1234',
+      mimeType: 'image/png', size: 128, width: 64, height: 32, infoUpdated: 123, bytes: new Uint8Array([1, 2, 3]),
+    };
+    S.morphFlagSettings = { masked: true, scaleFrom: 100, scaleTo: 80, offsetXFrom: 5, offsetXTo: 0, offsetYFrom: 0, offsetYTo: 0, rotationFrom: 0, rotationTo: 20 };
+    const built = buildAlightMotionMorphXML();
+    const doc = parseXml(built.xml);
+    expect(doc.querySelector('media').getAttribute('uri')).toBe('am-internal:///ABCD1234.PNG');
+    expect(doc.querySelector('media').getAttribute('filename')).toBe('ABCD1234.PNG');
+    expect(doc.documentElement.querySelectorAll(':scope > shape')).toHaveLength(3);
+    expect(doc.querySelector('shape[fillType="media"]').getAttribute('fillImage')).toBe('am-internal:///ABCD1234.PNG');
+    expect(doc.querySelector('shape[clippingMask="true"]')).toBeTruthy();
+    expect(built.flagLayers).toBe(2);
+    expect(built.flagAsset.bytes).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
   it('several tracks export as several keyframed layers, together or in sequence', () => {
     const D = poly([[51.40, -0.30], [51.40, -0.25], [51.45, -0.25], [51.45, -0.30]], 'Second start', '#ef4444');
     setTracks([A, B], [D, C]);
@@ -984,6 +1169,25 @@ describe('animator engine', () => {
     doc = parseXml(buildAlightMotionMorphXML().xml);
     expect([...doc.querySelectorAll(':scope > shape')].map((s) => s.getAttribute('label'))).toEqual(['Box → Blob', 'Second start → Bystander']);
     S.drawnItems.removeLayer(D);
+  });
+
+  it('downloads a matching image sidecar before the XML when a flag is selected', () => {
+    setTracks([A, B]);
+    S.morphFlagAsset = {
+      uri: 'am-internal:///ABCD1234.PNG', filename: 'ABCD1234.PNG', sig: 'ABCD1234',
+      mimeType: 'image/png', size: 3, width: 2, height: 2, infoUpdated: 123, bytes: new Uint8Array([1, 2, 3]),
+    };
+    const cap = captureDownload();
+    try {
+      expect(downloadAlightMotionMorph()).toBe(true);
+      expect(cap.saved).toHaveLength(2);
+      expect(cap.saved[0].type).toBe('image/png');
+      expect(cap.saved[1].type).toMatch(/^application\/xml/);
+      expect(cap.text(1)).toContain('am-internal:///ABCD1234.PNG');
+      expect(cap.text(1)).toContain('<media ');
+    } finally {
+      cap.restore();
+    }
   });
 
   it('downloadAlightMotionMorph saves the .xml and the legacy static export still works', async () => {

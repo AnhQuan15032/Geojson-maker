@@ -4,7 +4,7 @@
 import L from 'leaflet';
 import * as lucide from '../lib/icons.js';
 import { S } from './state.js';
-import { nextUniqueColor, setupLayerProperties } from './colors.js';
+import { setupLayerProperties } from './colors.js';
 import { onFeatureClick } from './exporters/geojson.js';
 import { announce } from './history.js';
 import { healLayerGeometryIfCorrupted } from './merge.js';
@@ -20,33 +20,33 @@ export function duplicateSelectedShape() {
     return;
   }
   const geo = src.toGeoJSON();
-  const c = nextUniqueColor();
-  const isLine = src instanceof L.Polyline && !(src instanceof L.Polygon);
+  const srcOptions = src.options || {};
+  const styleKeys = [
+    'stroke', 'color', 'weight', 'opacity', 'lineCap', 'lineJoin', 'dashArray',
+    'dashOffset', 'fill', 'fillColor', 'fillOpacity', 'fillRule', 'className',
+    'bubblingMouseEvents', 'interactive', 'pane', 'renderer', 'smoothFactor', 'noClip',
+  ];
+  const copiedStyle = {};
+  for (const key of styleKeys) {
+    if (srcOptions[key] !== undefined) copiedStyle[key] = srcOptions[key];
+  }
   const layer = L.geoJSON(geo, {
-    style: isLine ? {
-      color: c,
-      weight: src.options.weight || 3,
-      opacity: 1,
-      fillOpacity: 0
-    } : {
-      color: c,
-      fillColor: c,
-      fillOpacity: 1,
-      weight: 0,
-      dashArray: null
-    }
+    style: () => ({ ...copiedStyle }),
+    pointToLayer: (_feature, latlng) => src instanceof L.CircleMarker
+      ? L.circleMarker(latlng, { ...srcOptions })
+      : L.marker(latlng, { ...srcOptions }),
   }).getLayers()[0];
   if (!layer) {
     showToast('Could not duplicate that shape');
     return;
   }
   setupLayerProperties(layer);
-  const baseName = String(geo.properties && geo.properties.name || 'Region').replace(/ \(copy( \d+)?\)$/, '');
+  const originalProperties = geo.properties || {};
+  const baseName = String(originalProperties.name || 'Region').replace(/ \(copy( \d+)?\)$/, '');
   layer.feature.properties = {
-    ...(geo.properties || {}),
+    ...(layer.feature.properties || {}),
+    ...originalProperties,
     name: `${baseName} (copy)`,
-    fill: c,
-    stroke: c
   };
   layer.on('click', () => {
     if (S.splitModeActive) return;

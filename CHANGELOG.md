@@ -2,6 +2,18 @@
 
 All notable changes to GeoJSON Studio are documented here.
 
+## [1.6.0] — 2026-10-16 — Animate images with regions, choose a viewport
+
+### Added
+- **Region-following image / flag.** Upload a PNG, JPEG or WebP in Animate; the map preview follows each morph. Choose whether the image is clipped to the transforming outline or left as a rectangle, and set From/To scale, X/Y offsets (percent of the region bounds) and rotation. Those transforms use the same holds, easing, sequence and ping-pong timeline as the outline.
+- **Viewport presets.** Animate projects now fit and export to 9:16, 4:5 (1080×1350), 1:1, 4:3, 3:2 or 16:9 canvases.
+- **No duplicate region slots.** Assigning a drawn region to another morph clears its older From/To slot but leaves the map layer intact.
+- **Duplicate selected shapes.** A new Layers-panel button, alongside Draw quick tools and Ctrl+D, creates a copy with the source appearance intact and selects it.
+- A flag export downloads the `.xml` and a matching SHA-1-named image sidecar. Import the image into Alight Motion first so the project’s `am-internal:///…` media reference can resolve. The XML references the asset; it does not embed the image bytes. This media-link / clipping-mask flow is based on Alight Motion’s public serializer and renderer source and has not yet been verified inside the Alight Motion app.
+
+### Changed
+- Tests: 147 (including flag media, transform/mask XML, sidecar downloads, morph-slot handling, appearance-preserving Layers duplication and viewport fitting).
+
 ## [1.5.2] — 2026-10-15 — Merge: a Merge button on the map, no loss of detail
 
 ### Added

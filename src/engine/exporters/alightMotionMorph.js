@@ -27,6 +27,7 @@
 // keep static at the centre of the animation's footprint.
 
 import { amFix6, hexToAlightColor } from './alightMotion.js';
+import { cubicBezierEase, interpolateRing } from '../morph.js';
 import { escapeXml } from '../../lib/util.js';
 
 export const EASING_PRESETS = {
@@ -199,6 +200,7 @@ export function buildMorphShapeXml({
   easing = 'easeInOut',
   strokeWidth = 0,
   strokeColor,
+  clippingMask = false,
 }) {
   if (!from || !to || from.length !== to.length || from.length < 3) {
     throw new Error('Morph rings must have the same length (≥ 3)');
@@ -227,7 +229,7 @@ export function buildMorphShapeXml({
   const colB = hexToAlightColor(fillB || fillA, 1.0);
 
   let xml = '';
-  xml += `  <shape id="${id}" label="${escapeXml(label)}" startTime="0" endTime="${end}" fillType="color" mediaFillMode="fill">\n`;
+  xml += `  <shape id="${id}" label="${escapeXml(label)}" startTime="0" endTime="${end}"${clippingMask ? ' clippingMask="true"' : ''} fillType="color" mediaFillMode="fill">\n`;
   xml += `    <transform>\n`;
   xml += `      <location value="${amFix6(cx)},${amFix6(cy)},0.000000" />\n`;
   xml += `    </transform>\n`;
@@ -255,6 +257,148 @@ export function buildMorphShapeXml({
   xml += `    </path>\n`;
   xml += `  </shape>\n`;
   return xml;
+}
+
+function ringBounds(ring) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of ring) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, width: Math.max(0.01, maxX - minX), height: Math.max(0.01, maxY - minY) };
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function shortestRotation(from, to) {
+  const delta = ((to - from + 540) % 360) - 180;
+  return from + delta;
+}
+
+/**
+ * One media-backed rectangle that follows a morph's bounds, plus (optionally)
+ * an exact copy of its keyed outline flagged as the clipping mask. Alight
+ * Motion keeps the bitmap in its media store; `mediaUri` points at the matching
+ * sidecar image exported beside the XML.
+ */
+export function buildMorphFlagLayersXml({
+  id,
+  label,
+  from,
+  to,
+  timeline,
+  easing = 'easeInOut',
+  mediaUri,
+  masked = true,
+  settings = {},
+}) {
+  if (!from || !to || from.length !== to.length || from.length < 3) {
+    throw new Error('Flag transform needs matching morph rings (≥ 3 points)');
+  }
+  if (!mediaUri) throw new Error('Flag image needs an Alight Motion media URI');
+  const preset = easingSpec(easing);
+  const scaleA = clampNumber(settings.scaleFrom, 10, 500, 100) / 100;
+  const scaleB = clampNumber(settings.scaleTo, 10, 500, 100) / 100;
+  const offsetXA = clampNumber(settings.offsetXFrom, -100, 100, 0) / 100;
+  const offsetXB = clampNumber(settings.offsetXTo, -100, 100, 0) / 100;
+  const offsetYA = clampNumber(settings.offsetYFrom, -100, 100, 0) / 100;
+  const offsetYB = clampNumber(settings.offsetYTo, -100, 100, 0) / 100;
+  const rotationA = clampNumber(settings.rotationFrom, -360, 360, 0);
+  const rotationB = shortestRotation(rotationA, clampNumber(settings.rotationTo, -360, 360, 0));
+  const startProgress = (key) => key.which === 'A' ? 0 : 1;
+  const flagKeys = [];
+  const timelineKeys = timeline.keys;
+  if (timelineKeys.length) {
+    const first = timelineKeys[0];
+    flagKeys.push({ t: first.ms / timeline.totalMs, progress: startProgress(first) });
+  }
+  // The vector path's extrema can switch from one vertex to another mid-morph.
+  // Sample the same eased path so image bounds follow that motion instead of
+  // merely tweening between the two endpoint boxes (which can leave gaps).
+  const samplesPerMorph = 20;
+  for (let i = 1; i < timelineKeys.length; i++) {
+    const previous = timelineKeys[i - 1];
+    const next = timelineKeys[i];
+    const span = next.ms - previous.ms;
+    const moves = span > 0 && next.eased && previous.which !== next.which;
+    if (moves) {
+      for (let sample = 1; sample < samplesPerMorph; sample++) {
+        const raw = sample / samplesPerMorph;
+        const eased = preset.bezier ? cubicBezierEase(...preset.bezier, raw) : raw;
+        const progress = startProgress(previous) + (startProgress(next) - startProgress(previous)) * eased;
+        flagKeys.push({ t: (previous.ms + span * raw) / timeline.totalMs, progress });
+      }
+    }
+    flagKeys.push({ t: next.ms / timeline.totalMs, progress: startProgress(next) });
+  }
+  const valueAt = (progress) => {
+    const ring = interpolateRing(from, to, progress);
+    const box = ringBounds(ring);
+    const scale = Math.max(0.01, scaleA + (scaleB - scaleA) * progress);
+    const offsetX = offsetXA + (offsetXB - offsetXA) * progress;
+    const offsetY = offsetYA + (offsetYB - offsetYA) * progress;
+    return {
+      x: box.x + box.width * offsetX,
+      y: box.y + box.height * offsetY,
+      width: box.width * scale,
+      height: box.height * scale,
+      rotation: rotationA + (rotationB - rotationA) * progress,
+    };
+  };
+  const values = flagKeys.map((key) => ({ ...key, ...valueAt(key.progress) }));
+  const end = Math.round(timeline.totalMs);
+  const attrsFor = (property) => values.map((key) => kfAttrs(key.t, amFix6(key[property]), null, false)).join('');
+  const locations = values.map((key) => kfAttrs(key.t, `${amFix6(key.x)},${amFix6(key.y)},0.000000`, null, false)).join('');
+  const sizes = values.map((key) => kfAttrs(key.t, `${amFix6(key.width)},${amFix6(key.height)}`, null, false)).join('');
+
+  let xml = `  <shape id="${id}" label="${escapeXml(label)}" startTime="0" endTime="${end}" fillType="media" fillImage="${escapeXml(mediaUri)}" mediaFillMode="stretch" s=".rect">\n`;
+  xml += `    <transform>\n`;
+  xml += `      <location>${locations}</location>\n`;
+  xml += `      <rotation>${attrsFor('rotation')}</rotation>\n`;
+  xml += `    </transform>\n`;
+  xml += `    <property name="size" type="vec2">${sizes}</property>\n`;
+  xml += `  </shape>\n`;
+
+  if (masked) {
+    xml += buildMorphShapeXml({
+      id: id + 1,
+      label: `${label} — mask`,
+      from,
+      to,
+      fillA: '#ffffff',
+      fillB: '#ffffff',
+      animateColor: false,
+      timeline,
+      easing,
+      clippingMask: true,
+    });
+  }
+  return xml;
+}
+
+/** Metadata declaration for the linked image asset included beside the XML. */
+export function morphFlagMediaXml(asset) {
+  if (!asset?.uri || !asset?.sig) return '';
+  const fields = [
+    ['uri', asset.uri],
+    ['filename', asset.filename || asset.downloadName || `${asset.sig}.${asset.extension || 'PNG'}`],
+    ['title', asset.title || asset.name || 'Region image'],
+    ['type', asset.mimeType || 'image/png'],
+    ['size', Math.max(0, Math.round(Number(asset.size) || 0))],
+    ['sig', asset.sig],
+    ['infoUpdated', Math.max(0, Math.round(Number(asset.infoUpdated) || Date.now()))],
+    ['width', Math.max(1, Math.round(Number(asset.width) || 1))],
+    ['height', Math.max(1, Math.round(Number(asset.height) || 1))],
+  ];
+  return `  <media ${fields.map(([key, value]) => `${key}="${escapeXml(value)}"`).join(' ')} />\n`;
 }
 
 /**

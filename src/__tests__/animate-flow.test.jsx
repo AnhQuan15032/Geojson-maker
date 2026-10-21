@@ -89,6 +89,22 @@ describe('vector animator — user flow', () => {
     expect(S.morphPingPong).toBe(true);
     expect(document.getElementById('morph-total-time').textContent).toBe('7.5 s total');
 
+    // Canvas viewport and image-transform controls are wired to the engine.
+    const viewport = document.getElementById('morph-viewport');
+    viewport.value = '4:5';
+    viewport.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(S.morphViewport).toBe('4:5');
+    expect(S.morphPlanCache.proj.canvasHeight).toBe(1350);
+    viewport.value = '9:16';
+    viewport.dispatchEvent(new Event('change', { bubbles: true }));
+    const mask = document.getElementById('morph-flag-mask');
+    mask.click();
+    expect(S.morphFlagSettings.masked).toBe(false);
+    const flagRotation = document.getElementById('morph-flag-rotation-to');
+    flagRotation.value = '35';
+    flagRotation.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(S.morphFlagSettings.rotationTo).toBe(35);
+
     // Deleting the end shape empties its slot through the layer-group hook
     S.drawnItems.removeLayer(B);
     expect(S.morphTracks[0].to).toBeNull();
@@ -112,6 +128,8 @@ describe('vector animator — user flow', () => {
     // A second morph: "Add morph" creates an empty active track, the panel fills it from the selection,
     // both tracks preview together and export as two keyframed layers; the play-mode select reaches the engine
     const C = addPolygon([[51.40, -0.30], [51.40, -0.25], [51.45, -0.25], [51.45, -0.30]], 'Three', '#ef4444');
+    const D = addPolygon([[51.60, -0.18], [51.60, -0.15], [51.63, -0.15], [51.63, -0.18]], 'Four', '#a855f7');
+    D.setStyle({ opacity: 0.65, fillOpacity: 0.7, weight: 2, dashArray: '5 2', lineJoin: 'bevel' });
     document.getElementById('btn-morph-add-track').click();
     expect(S.morphTracks).toHaveLength(2);
     expect(S.morphActiveTrack).toBe(1);
@@ -119,9 +137,9 @@ describe('vector animator — user flow', () => {
     expect(exportBtn.disabled, 'an empty second track does not block the first').toBe(false);
     S.activeSelectedLayer = C;
     document.querySelector('#morph-tracks [data-action="use-from"][data-track="1"]').click();
-    S.activeSelectedLayer = A;
+    S.activeSelectedLayer = D;
     document.querySelector('#morph-tracks [data-action="use-to"][data-track="1"]').click();
-    expect(S.morphTracks[1]).toEqual({ from: C, to: A });
+    expect(S.morphTracks[1]).toEqual({ from: C, to: D });
     expect(document.getElementById('morph-from-name-1').textContent).toBe('Three');
     expect(document.getElementById('morph-status').textContent).toMatch(/2 morphs/);
     expect(document.getElementById('morph-total-time').textContent).toBe('7.5 s total · 2 morphs together');
@@ -137,8 +155,39 @@ describe('vector animator — user flow', () => {
     expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
     // removing a track from its row
     document.querySelector('#morph-tracks [data-action="remove"][data-track="0"]').click();
-    expect(S.morphTracks).toEqual([{ from: C, to: A }]);
+    expect(S.morphTracks).toEqual([{ from: C, to: D }]);
     expect(document.getElementById('morph-from-name-0').textContent).toBe('Three');
+
+    // The Layers-panel action duplicates the selected map shape without changing its appearance.
+    const duplicateButton = document.getElementById('btn-duplicate-selected-shape-layers');
+    expect(duplicateButton).toBeTruthy();
+    const original = S.activeSelectedLayer;
+    const originalGeometry = original.toGeoJSON().geometry;
+    const originalStyle = {
+      color: original.options.color,
+      fillColor: original.options.fillColor,
+      fillOpacity: original.options.fillOpacity,
+      weight: original.options.weight,
+      opacity: original.options.opacity,
+      dashArray: original.options.dashArray,
+      lineJoin: original.options.lineJoin,
+    };
+    const shapeCount = S.drawnItems.getLayers().length;
+    duplicateButton.click();
+    const copy = S.activeSelectedLayer;
+    expect(S.drawnItems.getLayers()).toHaveLength(shapeCount + 1);
+    expect(copy).not.toBe(original);
+    expect(copy.toGeoJSON().geometry).toEqual(originalGeometry);
+    expect(copy.feature.properties.name).toBe('Four (copy)');
+    expect({
+      color: copy.options.color,
+      fillColor: copy.options.fillColor,
+      fillOpacity: copy.options.fillOpacity,
+      weight: copy.options.weight,
+      opacity: copy.options.opacity,
+      dashArray: copy.options.dashArray,
+      lineJoin: copy.options.lineJoin,
+    }).toEqual(originalStyle);
   });
 
   it('graph editor: drag the handles → custom curve previews, persists and exports as cubicBezier', async () => {

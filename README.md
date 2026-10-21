@@ -20,6 +20,27 @@ npm run check     # module-graph check + TDZ check + tests
 and **countries** from the **Map** panel, draw, split, merge, cut to coastline and
 export. No sign-in, no storage, no cloud.
 
+## New in 1.6.0 — animated region images, transform keyframes and more canvas sizes
+
+- **An image / flag can follow each morph.** Upload a PNG, JPEG or WebP in
+  Animate to preview it moving with the changing region. Choose to clip it to
+  the exact morphing outline or leave it rectangular. Set separate From/To
+  scale, X/Y offsets (percent of the region bounds), and rotation; those values
+  export as Alight Motion transform/size keyframes using the morph timeline.
+- **Six viewport presets:** 9:16 portrait (default), 4:5 portrait (1080×1350),
+  1:1 square, 4:3, 3:2 and 16:9 landscape. Geometry fitting and XML canvas
+  dimensions use the same selection.
+- **One region, one morph slot.** Reusing a drawn region in a newer morph
+  clears only its earlier From/To assignment; it does not delete the map layer.
+- **Duplicate selected shapes from Layers.** The Layers-panel button, Draw quick
+  tool and Ctrl+D make a copy that preserves the source appearance, then select it.
+- When an image is selected, Export downloads both the `.xml` and its matching
+  SHA-1-named image sidecar. Import the image into Alight Motion first so its
+  `am-internal:///…` link can resolve. XML references (but cannot embed) the
+  bitmap. The media-link and clipping-mask XML follows public Alight Motion
+  serializer/renderer source, but still needs a test inside the Alight Motion
+  app.
+
 ## New in 1.5.2 — merge: a Merge button on the map, no loss of detail
 
 - **Floating Merge toolbar.** Turning *Merge* on shows a bar at the bottom of
@@ -385,12 +406,12 @@ the subtree while the Leaflet map stays bound to the detached first copy.
 
 `npm run check` runs three things:
 
-1. **module graph** — 84 source files, 770+ relative imports, every named
+1. **module graph** — 85 source files, 792 relative imports, every named
    import resolves to a real export
 2. **TDZ** — no top-level initializer reads a binding from a module it is in an
    import cycle with
-3. **138 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
-   Alight Motion keyframes, animate user flow incl. the graph editor, country
+3. **147 tests** (parity, smoke, dist, split-polygon, cut-sea, morph geometry /
+   Alight Motion keyframes and image media, animate user flow incl. the graph editor, country
    loader flow, drawing feel (fast clicks, Esc), antimeridian repair). The
    original three groups:
    - *parity* — loads the original monolith into a `vm` sandbox and diffs it

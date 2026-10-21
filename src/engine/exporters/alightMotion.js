@@ -25,6 +25,17 @@ export const amFmt = fmt;
 // Use large IDs like AutoTrace (2000000000+) to avoid collision with AM internal counter
 export const AM_BASE_ID = 2000000000;
 
+// Common Alight Motion canvases. The animation drawer picks one of these so
+// both its geometry fit and the exported scene header use the same dimensions.
+export const ALIGHT_VIEWPORTS = Object.freeze({
+  '9:16': Object.freeze({ width: 1080, height: 1920, label: '9:16 · Portrait' }),
+  '4:5': Object.freeze({ width: 1080, height: 1350, label: '4:5 · Portrait' }),
+  '1:1': Object.freeze({ width: 1080, height: 1080, label: '1:1 · Square' }),
+  '4:3': Object.freeze({ width: 1440, height: 1080, label: '4:3 · Landscape' }),
+  '3:2': Object.freeze({ width: 1620, height: 1080, label: '3:2 · Landscape' }),
+  '16:9': Object.freeze({ width: 1920, height: 1080, label: '16:9 · Widescreen' }),
+});
+
 // Web Mercator (the projection the map on screen uses) in radians.
 const MAX_MERC_LAT = 85.05112878;
 const mercX = (lng) => lng * Math.PI / 180;
@@ -126,21 +137,19 @@ export function makeAlightProjection(bounds, { canvasWidth = 1080, canvasHeight 
 }
 
 /** Scene wrapper — verified header matches AutoTrace/real export (modifiedTime, amver/ffver, retime attrs). */
-export function alightSceneXml(shapesXml, { canvasWidth = 1080, canvasHeight = 1920, totalTime = 5000, title = 'Map Vector Project' } = {}) {
+export function alightSceneXml(shapesXml, { canvasWidth = 1080, canvasHeight = 1920, totalTime = 5000, title = 'Map Vector Project', mediaXml = '' } = {}) {
   let xml = `<?xml version='1.0' encoding='UTF-8' ?>\n`;
   xml += `<!-- Created by Alight Motion (http://alightmotion.com) -->\n`;
   xml += `<!-- Exported from GeoJSON Studio -->\n`;
   xml += `<scene title="${escapeXml(title)}" width="${canvasWidth}" height="${canvasHeight}" exportWidth="${canvasWidth}" exportHeight="${canvasHeight}" precompose="dynamicResolution" bgcolor="#ff000000" totalTime="${Math.round(totalTime)}" fps="30" modifiedTime="${Date.now()}" amver="1028425" ffver="106" am="com.alightcreative.motion/5.0.273.1028425" amplatform="android" retime="freeze" retimeAdaptFPS="false">\n`;
+  xml += mediaXml;
   xml += shapesXml;
   xml += `</scene>`;
   return xml;
 }
 
-/** Trigger a browser download of an XML document. */
-export function saveXmlFile(xml, filename) {
-  const blob = new Blob([xml], {
-    type: "application/xml;charset=utf-8"
-  });
+/** Trigger a browser download for any Blob-backed file. */
+export function saveBlobFile(blob, filename) {
   const url = URL.createObjectURL(blob);
   const dlLink = document.createElement('a');
   dlLink.href = url;
@@ -149,6 +158,11 @@ export function saveXmlFile(xml, filename) {
   dlLink.click();
   dlLink.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Trigger a browser download of an XML document. */
+export function saveXmlFile(xml, filename) {
+  saveBlobFile(new Blob([xml], { type: 'application/xml;charset=utf-8' }), filename);
 }
 
 /**

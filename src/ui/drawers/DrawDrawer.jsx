@@ -127,7 +127,7 @@ export function DrawDrawer() {
       </div>
       {/* QUICK TOOLS */}
       <div className="grid grid-cols-4 gap-2 mb-4">
-        <button onClick={() => { actions.duplicateSelectedShape() }} title="Duplicate (Ctrl+D)" className="flex flex-col items-center justify-center p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 text-[10px] text-slate-200 gap-1 transition active:scale-95">
+        <button onClick={() => { actions.duplicateSelectedShape() }} title="Duplicate a matching copy (Ctrl+D)" className="flex flex-col items-center justify-center p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 text-[10px] text-slate-200 gap-1 transition active:scale-95">
           <Icon name="copy-plus" className="w-4 h-4 text-emerald-400" />
           {' Duplicate '}
         </button>
