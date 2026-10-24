@@ -11,8 +11,11 @@ All notable changes to GeoJSON Studio are documented here.
 - **Duplicate selected shapes.** A new Layers-panel button, alongside Draw quick tools and Ctrl+D, creates a copy with the source appearance intact and selects it.
 - A flag export downloads the `.xml` and a matching SHA-1-named image sidecar. Import the image into Alight Motion first so the project’s `am-internal:///…` media reference can resolve. The XML references the asset; it does not embed the image bytes. This media-link / clipping-mask flow is based on Alight Motion’s public serializer and renderer source and has not yet been verified inside the Alight Motion app.
 
+### Fixed
+- Transparent PNG export no longer draws stray diagonal connectors between separate line parts. It also respects source opacity, dash patterns, line caps/joins and circle-marker radii, while keeping thick outlines inside the tight crop.
+
 ### Changed
-- Tests: 147 (including flag media, transform/mask XML, sidecar downloads, morph-slot handling, appearance-preserving Layers duplication and viewport fitting).
+- Tests: 151 (including flag media, transform/mask XML, sidecar downloads, morph-slot handling, appearance-preserving Layers duplication, viewport fitting and PNG renderer path/style cases).
 
 ## [1.5.2] — 2026-10-15 — Merge: a Merge button on the map, no loss of detail
 
