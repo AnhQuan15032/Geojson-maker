@@ -13,9 +13,10 @@ All notable changes to GeoJSON Studio are documented here.
 
 ### Fixed
 - Transparent PNG export no longer draws stray diagonal connectors between separate line parts. It also respects source opacity, dash patterns, line caps/joins and circle-marker radii, while keeping thick outlines inside the tight crop.
+- Added **PNG (Pixel Perfect)** as a separate hard-edge export: it rasterizes fill/stroke separately at 1:1 map-pixel scale and removes antialias coverage while preserving the layer’s intended opacity. Diagonals may look stepped; the standard transparent export remains smoothly antialiased.
 
 ### Changed
-- Tests: 151 (including flag media, transform/mask XML, sidecar downloads, morph-slot handling, appearance-preserving Layers duplication, viewport fitting and PNG renderer path/style cases).
+- Tests: 152 (including flag media, transform/mask XML, sidecar downloads, morph-slot handling, appearance-preserving Layers duplication, viewport fitting, PNG renderer styles and hard-edge alpha coverage).
 
 ## [1.5.2] — 2026-10-15 — Merge: a Merge button on the map, no loss of detail
 

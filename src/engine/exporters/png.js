@@ -7,15 +7,17 @@ import { PREVIEW_COLOR } from '../constants.js';
 import { closeDrawers, showToast } from '../uiHelpers.js';
 
 // ================= TRANSPARENT PNG VECTOR RENDERER =================
-export function downloadTransparentPNG(cropTight = true) {
+export function downloadTransparentPNG(cropTight = true, { pixelPerfect = false } = {}) {
   const layers = S.drawnItems.getLayers();
   if (layers.length === 0) {
     showToast("Please draw at least one shape first!");
     return;
   }
-  showToast("Rendering transparent PNG of drawn shapes...");
+  showToast(pixelPerfect
+    ? "Rendering pixel-perfect PNG with hard edges..."
+    : "Rendering transparent PNG of drawn shapes...");
   closeDrawers();
-  const dpr = 2;
+  const dpr = pixelPerfect ? 1 : 2;
   const mapSize = S.map.getSize();
   let minX, minY, width, height;
   if (cropTight) {
@@ -45,9 +47,48 @@ export function downloadTransparentPNG(cropTight = true) {
   }
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, width, height);
-  layers.forEach((layer) => {
-    drawVectorLayerToCanvas(ctx, layer, minX, minY);
-  });
+
+  if (pixelPerfect) {
+    const scratchCanvas = document.createElement('canvas');
+    scratchCanvas.width = canvas.width;
+    scratchCanvas.height = canvas.height;
+    const scratchCtx = scratchCanvas.getContext('2d');
+    if (!scratchCtx) {
+      showToast("Pixel-perfect PNG export is not supported in this browser");
+      return;
+    }
+    ctx.imageSmoothingEnabled = false;
+    scratchCtx.imageSmoothingEnabled = false;
+    try {
+      for (const layer of layers) {
+        // Harden fill and stroke separately so intentional layer opacity remains
+        // intact and antialiased edges cannot blend their colors together.
+        for (const paint of ['fill', 'stroke']) {
+          if (!hasVectorPaint(layer, paint)) continue;
+          scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+          scratchCtx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
+          scratchCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          drawVectorLayerToCanvas(scratchCtx, layer, minX, minY, paint);
+          const imageData = scratchCtx.getImageData(0, 0, scratchCanvas.width, scratchCanvas.height);
+          hardenAlphaCoverage(imageData, layerPaintOpacity(layer, paint));
+          scratchCtx.putImageData(imageData, 0, 0);
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(scratchCanvas, 0, 0);
+          ctx.restore();
+        }
+      }
+    } catch (error) {
+      console.error('Pixel-perfect PNG export failed', error);
+      showToast("Pixel-perfect PNG export failed in this browser");
+      return;
+    }
+  } else {
+    layers.forEach((layer) => {
+      drawVectorLayerToCanvas(ctx, layer, minX, minY);
+    });
+  }
+
   canvas.toBlob((blob) => {
     if (!blob) {
       showToast("Export failed");
@@ -56,12 +97,14 @@ export function downloadTransparentPNG(cropTight = true) {
     const url = URL.createObjectURL(blob);
     const dlLink = document.createElement('a');
     dlLink.href = url;
-    dlLink.download = `drawn_region_transparent_${Date.now()}.png`;
+    dlLink.download = pixelPerfect
+      ? `drawn_region_pixel_perfect_${Date.now()}.png`
+      : `drawn_region_transparent_${Date.now()}.png`;
     document.body.appendChild(dlLink);
     dlLink.click();
     dlLink.remove();
     URL.revokeObjectURL(url);
-    showToast("Transparent PNG downloaded!");
+    showToast(pixelPerfect ? "Pixel-perfect PNG downloaded!" : "Transparent PNG downloaded!");
   }, 'image/png');
 }
 
@@ -86,6 +129,54 @@ function readNumber(value, fallback) {
 
 function clampAlpha(value, fallback = 1) {
   return Math.min(1, Math.max(0, readNumber(value, fallback)));
+}
+
+function layerPaintOpacity(layer, paint) {
+  const options = layer.options || {};
+  const props = layer.feature && layer.feature.properties || {};
+  if (paint === 'fill') {
+    return clampAlpha(options.fillOpacity ?? props['fill-opacity'], layer instanceof L.Marker ? 1 : 0.2);
+  }
+  return clampAlpha(options.opacity, 1);
+}
+
+function hasVectorPaint(layer, paint) {
+  const options = layer.options || {};
+  const props = layer.feature && layer.feature.properties || {};
+  if (paint === 'fill') {
+    const hasFillGeometry = layer instanceof L.Polygon
+      || layer instanceof L.CircleMarker
+      || layer instanceof L.Marker;
+    return hasFillGeometry && options.fill !== false && props.fill !== false
+      && layerPaintOpacity(layer, paint) > 0;
+  }
+  const hasStrokeGeometry = layer instanceof L.Polyline
+    || layer instanceof L.CircleMarker
+    || layer instanceof L.Marker;
+  const hasExplicitMarkerStroke = options.weight !== undefined || props['stroke-width'] !== undefined;
+  const width = Math.max(0, readNumber(options.weight, readNumber(props['stroke-width'], 3)));
+  return hasStrokeGeometry && options.stroke !== false && props.stroke !== false && width > 0
+    && (!(layer instanceof L.Marker) || hasExplicitMarkerStroke)
+    && layerPaintOpacity(layer, paint) > 0;
+}
+
+/** Convert antialiased coverage into hard on/off edge pixels at the paint opacity. */
+export function hardenAlphaCoverage(imageData, opacity, threshold = 0.5) {
+  const targetAlpha = Math.round(clampAlpha(opacity) * 255);
+  const cutoff = targetAlpha * clampAlpha(threshold, 0.5);
+  const data = imageData && imageData.data;
+  if (!data || targetAlpha <= 0) return imageData;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < cutoff) {
+      data[i] = 0;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+      data[i + 3] = 0;
+    } else if (data[i + 3] > 0) {
+      data[i + 3] = targetAlpha;
+    }
+  }
+  return imageData;
 }
 
 function isLatLng(value) {
@@ -123,27 +214,23 @@ function appendOpenPath(ctx, line, offsetX, offsetY) {
   }
 }
 
-export function drawVectorLayerToCanvas(ctx, layer, offsetX, offsetY) {
+export function drawVectorLayerToCanvas(ctx, layer, offsetX, offsetY, paint = 'both') {
   const opts = layer.options || {};
   const props = layer.feature && layer.feature.properties || {};
   const fillColor = opts.fillColor || props.fill || opts.color || props.stroke || PREVIEW_COLOR;
   const strokeColor = opts.color || props.stroke || fillColor;
-  const isMarker = layer instanceof L.Marker;
-  const fillOpacity = clampAlpha(opts.fillOpacity ?? props['fill-opacity'], isMarker ? 1 : 0.2);
-  const strokeOpacity = clampAlpha(opts.opacity, 1);
-  const hasExplicitStrokeWidth = opts.weight !== undefined || props['stroke-width'] !== undefined;
+  const fillOpacity = layerPaintOpacity(layer, 'fill');
+  const strokeOpacity = layerPaintOpacity(layer, 'stroke');
   const strokeWidth = Math.max(0, readNumber(opts.weight, readNumber(props['stroke-width'], 3)));
   const dashArray = parseDashArray(opts.dashArray ?? props['stroke-dasharray']);
-  const lineWidth = strokeWidth;
   const lineCap = ['butt', 'round', 'square'].includes(opts.lineCap) ? opts.lineCap : 'round';
   const lineJoin = ['round', 'bevel', 'miter'].includes(opts.lineJoin) ? opts.lineJoin : 'round';
   const baseAlpha = clampAlpha(ctx.globalAlpha, 1);
-  const canStroke = opts.stroke !== false && props.stroke !== false && lineWidth > 0
-    && (!isMarker || hasExplicitStrokeWidth);
-  const canFill = opts.fill !== false && props.fill !== false;
+  const canFill = paint !== 'stroke' && hasVectorPaint(layer, 'fill');
+  const canStroke = paint !== 'fill' && hasVectorPaint(layer, 'stroke');
 
   ctx.save();
-  ctx.lineWidth = lineWidth;
+  ctx.lineWidth = strokeWidth;
   ctx.lineJoin = lineJoin;
   ctx.lineCap = lineCap;
   ctx.lineDashOffset = readNumber(opts.dashOffset ?? props['stroke-dashoffset'], 0);
@@ -151,7 +238,7 @@ export function drawVectorLayerToCanvas(ctx, layer, offsetX, offsetY) {
 
   if (layer instanceof L.Polygon) {
     renderPolygonPath(ctx, layer.getLatLngs(), offsetX, offsetY);
-    if (canFill && fillOpacity > 0) {
+    if (canFill) {
       ctx.globalAlpha = baseAlpha * fillOpacity;
       ctx.fillStyle = fillColor;
       ctx.fill(opts.fillRule || 'evenodd');
@@ -175,7 +262,7 @@ export function drawVectorLayerToCanvas(ctx, layer, offsetX, offsetY) {
       : Math.max(0, readNumber(layer.getRadius(), 6));
     ctx.beginPath();
     ctx.arc(point[0], point[1], radius, 0, Math.PI * 2);
-    if (canFill && fillOpacity > 0) {
+    if (canFill) {
       ctx.globalAlpha = baseAlpha * fillOpacity;
       ctx.fillStyle = fillColor;
       ctx.fill();
@@ -189,7 +276,7 @@ export function drawVectorLayerToCanvas(ctx, layer, offsetX, offsetY) {
     const point = canvasPoint(layer.getLatLng(), offsetX, offsetY);
     ctx.beginPath();
     ctx.arc(point[0], point[1], 6, 0, Math.PI * 2);
-    if (canFill && fillOpacity > 0) {
+    if (canFill) {
       ctx.globalAlpha = baseAlpha * fillOpacity;
       ctx.fillStyle = fillColor;
       ctx.fill();

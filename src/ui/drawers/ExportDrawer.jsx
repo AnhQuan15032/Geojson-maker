@@ -39,6 +39,20 @@ export function ExportDrawer() {
           <Icon name="sparkles" className="w-4 h-4" />
           {' PNG (Transparent) '}
         </button>
+        {/* Hard-edge export: one output pixel per map pixel, with antialias coverage removed. */}
+        <button
+          id="btn-export-pixel-perfect-png"
+          type="button"
+          title="Hard pixel edges with no antialiasing; diagonals can look stepped"
+          onClick={() => { actions.downloadTransparentPNG(true, { pixelPerfect: true }) }}
+          className="p-3 bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 border border-cyan-500/40 transition"
+        >
+          <Icon name="scan-line" className="w-4 h-4 text-cyan-300" />
+          {' PNG (Pixel Perfect) '}
+        </button>
+        <p className="col-span-2 -mt-1 text-[9px] text-slate-500 text-center">
+          Pixel Perfect removes soft edge pixels; diagonals may appear stepped.
+        </p>
       </div>
       {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-2 mb-3 text-xs">

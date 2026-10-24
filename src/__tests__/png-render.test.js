@@ -5,6 +5,7 @@ import L from 'leaflet';
 import { S } from '../engine/state.js';
 import {
   drawVectorLayerToCanvas,
+  hardenAlphaCoverage,
   renderLinePath,
   renderPolygonPath,
 } from '../engine/exporters/png.js';
@@ -119,5 +120,29 @@ describe('transparent PNG vector renderer', () => {
     expect(ctx.arc).toHaveBeenCalledWith(2, 1, 7, 0, Math.PI * 2);
     expect(ctx.fillCalls[0].alpha).toBeCloseTo(0.4);
     expect(ctx.strokeCalls[0].alpha).toBeCloseTo(0.5);
+  });
+
+  it('removes partial-coverage edge alpha while retaining the layer opacity', () => {
+    const opaque = {
+      data: new Uint8ClampedArray([
+        0, 0, 0, 0,
+        40, 80, 120, 127,
+        40, 80, 120, 128,
+        40, 80, 120, 255,
+      ]),
+    };
+    hardenAlphaCoverage(opaque, 1);
+    expect([0, 4, 8, 12].map((index) => opaque.data[index + 3])).toEqual([0, 0, 255, 255]);
+    expect(Array.from(opaque.data.slice(4, 8))).toEqual([0, 0, 0, 0]);
+
+    const translucent = {
+      data: new Uint8ClampedArray([
+        40, 80, 120, 63,
+        40, 80, 120, 64,
+        40, 80, 120, 128,
+      ]),
+    };
+    hardenAlphaCoverage(translucent, 0.5);
+    expect([3, 7, 11].map((index) => translucent.data[index])).toEqual([0, 128, 128]);
   });
 });

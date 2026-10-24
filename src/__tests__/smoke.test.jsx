@@ -37,7 +37,7 @@ describe('app bootstrap', () => {
 
     for (const id of [
       'app-header', 'mobile-app-header', 'map', 'desktop-rail', 'mobile-nav',
-      'mobile-selection-bar', 'export-drawer', 'draw-drawer', 'style-drawer',
+      'mobile-selection-bar', 'export-drawer', 'btn-export-pixel-perfect-png', 'draw-drawer', 'style-drawer',
       'image-drawer', 'layers-drawer', 'tutorial-overlay', 'tour-spot',
       'tour-call', 'tutorial-pill', 'shortcut-sheet', 'toast', 'sheet-backdrop',
       'a11y-live', 'skip-link',

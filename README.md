@@ -36,6 +36,8 @@ export. No sign-in, no storage, no cloud.
   tool and Ctrl+D make a copy that preserves the source appearance, then select it.
 - **Cleaner transparent PNG exports.** Separate line parts stay separate, and
   opacity, dash patterns and line styling are retained without crop-edge clipping.
+  A separate **PNG (Pixel Perfect)** option produces hard 1:1 pixels with no
+  antialiased edge pixels; diagonals may look stepped.
 - When an image is selected, Export downloads both the `.xml` and its matching
   SHA-1-named image sidecar. Import the image into Alight Motion first so its
   `am-internal:///…` link can resolve. XML references (but cannot embed) the
