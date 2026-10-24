@@ -127,7 +127,7 @@ export function DrawDrawer() {
       </div>
       {/* QUICK TOOLS */}
       <div className="grid grid-cols-4 gap-2 mb-4">
-        <button onClick={() => { actions.duplicateSelectedShape() }} title="Duplicate (Ctrl+D)" className="flex flex-col items-center justify-center p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 text-[10px] text-slate-200 gap-1 transition active:scale-95">
+        <button onClick={() => { actions.duplicateSelectedShape() }} title="Duplicate a matching copy (Ctrl+D)" className="flex flex-col items-center justify-center p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 text-[10px] text-slate-200 gap-1 transition active:scale-95">
           <Icon name="copy-plus" className="w-4 h-4 text-emerald-400" />
           {' Duplicate '}
         </button>
@@ -293,8 +293,9 @@ export function DrawDrawer() {
         <label className="flex items-center justify-between p-2 bg-slate-900/60 border border-slate-700/60 rounded-xl cursor-pointer">
           <span className="text-[10px] font-bold text-slate-300">
             Dissolve inner borders & gaps
+            <span className="block text-[9px] font-normal text-slate-500">drops the thin holes left between mismatched borders — no point is moved</span>
           </span>
-          <input type="checkbox" id="merge-dissolve" checked="" className="w-4 h-4 accent-violet-500 rounded" />
+          <input type="checkbox" id="merge-dissolve" defaultChecked className="w-4 h-4 accent-violet-500 rounded" />
         </label>
         <div className="grid grid-cols-3 gap-2">
           <button onClick={() => { actions.toggleMergeMode() }} id="btn-merge-mode" className="p-3 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-bold text-slate-200 flex items-center justify-center gap-1.5 active:scale-95 transition">

@@ -4,6 +4,7 @@
 import L from 'leaflet';
 import { S } from './state.js';
 import { bboxOfLine, mercLL, mercXY } from '../lib/util.js';
+import { splitLineAtAntimeridian } from './antimeridian.js';
 import { topojson } from './heavyLibs.js';
 import { createImageControlHandles, overlayProjectedBounds, syncScaleUI } from './overlayImage.js';
 import { showToast } from './uiHelpers.js';
@@ -45,7 +46,8 @@ export async function ensureWorldBorders() {
         topo = await r2.json();
       }
       const mesh = topojson.mesh(topo, topo.objects.countries, (a, b) => a !== b);
-      S.worldBorderLines = (mesh.coordinates || []).map(line => ({
+      // the mesh is geostitched too: break lines where they jump across ±180°
+      S.worldBorderLines = (mesh.coordinates || []).flatMap(splitLineAtAntimeridian).map(line => ({
         line,
         bbox: bboxOfLine(line)
       }));

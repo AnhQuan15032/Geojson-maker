@@ -5,6 +5,22 @@ import { S } from './state.js';
 import { announce } from './history.js';
 import { updateMobileSelectionBar, updateStatsNow } from './quickTools.js';
 
+/**
+ * End the running Geoman draw session whatever shape it is. Geoman's own
+ * `disableDraw()` only stops the Polygon tool unless told the shape, so a
+ * Line / Rectangle / Marker session (or a split blade) would carry on.
+ * Returns true when a session was stopped.
+ */
+export function endDrawSession() {
+  const pm = S.map && S.map.pm;
+  if (!pm || !pm.globalDrawModeEnabled || !pm.globalDrawModeEnabled()) return false;
+  const shape = pm.Draw && typeof pm.Draw.getActiveShape === 'function' ? pm.Draw.getActiveShape() : null;
+  if (shape) pm.disableDraw(shape);
+  else if (pm.Draw && typeof pm.Draw.disable === 'function') pm.Draw.disable();
+  else pm.disableDraw();
+  return true;
+}
+
 // ================= UI HELPERS =================
 export function isMobileAppUI() {
   return window.matchMedia('(max-width: 1023px)').matches;

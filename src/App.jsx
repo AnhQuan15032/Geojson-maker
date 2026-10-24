@@ -5,7 +5,9 @@ import { MobileHeader } from './ui/MobileHeader';
 import { DesktopRail } from './ui/DesktopRail';
 import { MobileNav } from './ui/MobileNav';
 import { MobileSelectionBar } from './ui/MobileSelectionBar';
+import { MergeBar } from './ui/MergeBar';
 import { ExportDrawer } from './ui/drawers/ExportDrawer';
+import { AnimateDrawer } from './ui/drawers/AnimateDrawer';
 import { DrawDrawer } from './ui/drawers/DrawDrawer';
 import { StyleDrawer } from './ui/drawers/StyleDrawer';
 import { ImageDrawer } from './ui/drawers/ImageDrawer';
@@ -31,7 +33,9 @@ export default function App() {
       <DesktopRail />
       <MobileNav />
       <MobileSelectionBar />
+      <MergeBar />
       <ExportDrawer />
+      <AnimateDrawer />
       <DrawDrawer />
       <StyleDrawer />
       <ImageDrawer />

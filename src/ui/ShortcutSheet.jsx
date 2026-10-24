@@ -66,6 +66,22 @@ export function ShortcutSheet() {
           </div>
           <div className="flex justify-between gap-2">
             <span>
+              Animate panel (vector morph)
+            </span>
+            <kbd>
+              A
+            </kbd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span>
+              Load country (search box, Enter loads)
+            </span>
+            <kbd>
+              L
+            </kbd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span>
               Map & borders
             </span>
             <kbd>
@@ -94,6 +110,14 @@ export function ShortcutSheet() {
             </span>
             <kbd>
               M
+            </kbd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span>
+              Merge the picked regions (in merge mode)
+            </span>
+            <kbd>
+              Enter
             </kbd>
           </div>
           <div className="flex justify-between gap-2">
@@ -172,7 +196,7 @@ export function ShortcutSheet() {
           </div>
           <div className="flex justify-between gap-2">
             <span>
-              Close / cancel
+              Close / cancel (also abandons the shape being drawn)
             </span>
             <kbd>
               Esc

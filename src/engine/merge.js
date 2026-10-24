@@ -4,6 +4,7 @@
 import L from 'leaflet';
 import { S } from './state.js';
 import { computeGeoBbox, yieldFrame } from '../lib/util.js';
+import { splitPolygonAtAntimeridian } from './antimeridian.js';
 import { applyShapeLockStyle } from './borderDetail.js';
 import { nextUniqueColor, setupLayerProperties } from './colors.js';
 import { LAND_SOURCES, PREVIEW_COLOR, curveStore } from './constants.js';
@@ -59,6 +60,7 @@ export function updateMergeModeUI() {
     panelBtn.classList.toggle('bg-slate-700', !S.mergeMode);
     panelBtn.classList.toggle('text-slate-200', !S.mergeMode);
   }
+  document.body.classList.toggle('merge-mode', !!S.mergeMode);
   setMergeStatus();
   if (S.map) {
     S.map.getContainer().style.cursor = S.selectOnMapMode || S.deleteMode || S.mergeMode ? 'crosshair' : '';
@@ -66,10 +68,53 @@ export function updateMergeModeUI() {
 }
 
 export function setMergeStatus(txt, tone) {
+  updateMergeBar(txt, tone);
   const el = document.getElementById('merge-status');
   if (!el) return;
   el.textContent = txt || `${S.mergeSelection.length} picked`;
   el.className = tone === 'ok' ? 'text-[10px] font-mono text-emerald-400' : tone === 'busy' ? 'text-[10px] font-mono text-amber-300' : S.mergeSelection.length > 0 ? 'text-[10px] font-mono text-violet-300' : 'text-[10px] font-mono text-slate-400';
+}
+
+/**
+ * The floating Merge toolbar (`#merge-bar`, see ui/MergeBar.jsx): shown while
+ * Merge mode is on, tells how many regions are picked and enables the Merge
+ * button once there are two — so the merge can be run from the map instead
+ * of from the Draw panel.
+ */
+export function updateMergeBar(txt, tone) {
+  const bar = document.getElementById('merge-bar');
+  if (!bar) return;
+  const on = !!S.mergeMode;
+  bar.classList.toggle('visible', on);
+  bar.setAttribute('aria-hidden', on ? 'false' : 'true');
+  if (!on) return;
+  const n = S.mergeSelection.length;
+  const title = document.getElementById('merge-bar-title');
+  const hint = document.getElementById('merge-bar-hint');
+  const run = document.getElementById('btn-merge-bar-run');
+  const label = document.getElementById('merge-bar-run-label');
+  const busy = tone === 'busy';
+  if (title) {
+    title.textContent = busy ? (txt || 'Merging…') : n === 0 ? 'Merge mode' : n === 1 ? '1 region picked' : `${n} regions picked`;
+  }
+  if (hint) {
+    hint.textContent = busy ? 'Fusing the picked regions…'
+      : tone === 'ok' && txt ? `${txt} ✓ — tap more regions, or ✓ to finish`
+      : n === 0 ? 'Tap the regions on the map you want to fuse'
+      : n === 1 ? 'Tap at least one more region'
+      : 'Press Merge to fuse them into one shape';
+  }
+  if (run) {
+    const ready = n >= 2 && !busy;
+    const wasReady = !run.disabled;
+    run.disabled = !ready;
+    run.setAttribute('aria-disabled', ready ? 'false' : 'true');
+    if (ready && !wasReady) {
+      run.classList.add('is-ready');
+      setTimeout(() => run.classList.remove('is-ready'), 600);
+    }
+  }
+  if (label) label.textContent = n >= 2 ? `Merge ${n}` : 'Merge';
 }
 
 export function highlightMergeLayer(layer, on) {
@@ -166,10 +211,13 @@ export async function unionLayers(layers, statusPrefix) {
   await ensureHeavyLibs();
   const _turfCheck = turf || (typeof window !== 'undefined' ? window.turf : null);
   if (!_turfCheck) throw new Error('Turf geometry engine unavailable');
-  let acc = layers[0].toGeoJSON();
-  for (let i = 1; i < layers.length; i++) {
+  // Full-precision coordinates: Leaflet's toGeoJSON() rounds to 6 decimals by
+  // default, which would nudge every vertex of the merged outline.
+  const inputs = layers.map(l => l.toGeoJSON(false));
+  let acc = inputs[0];
+  for (let i = 1; i < inputs.length; i++) {
     try {
-      const u = turf.union(acc, layers[i].toGeoJSON());
+      const u = turf.union(acc, inputs[i]);
       if (u && u.geometry) acc = u;
     } catch (e) {/* skip a bad ring, keep merging the rest */}
     if (i % 12 === 0) {
@@ -178,20 +226,90 @@ export async function unionLayers(layers, statusPrefix) {
     }
   }
 
-  // Optional cleanup: remove slivers/gaps left between imperfect borders
+  // Optional cleanup: drop the thin little holes left where two borders were
+  // meant to coincide but did not quite. (The old ±0.8 m buffer round trip
+  // moved every vertex and tripled the point count; this touches no vertex.)
   const dissolve = (document.getElementById('merge-dissolve') || {}).checked;
   if (dissolve && acc && acc.geometry) {
     try {
-      const buffered = turf.buffer(acc, 0.0008, {
-        units: 'kilometers'
-      });
-      const shrunk = buffered ? turf.buffer(buffered, -0.0008, {
-        units: 'kilometers'
-      }) : null;
-      if (shrunk && shrunk.geometry) acc = shrunk;
+      acc = removeMergeGaps(acc, inputs);
     } catch (e) {/* keep the plain union */}
   }
   return acc;
+}
+
+const vertexKey = c => `${Math.round(c[0] * 1e9)},${Math.round(c[1] * 1e9)}`;
+const polygonsOf = g => !g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+
+/**
+ * Dissolve for merges: remove the holes a union leaves between imperfect
+ * borders (a 50 m country next to a 10 m province, a refined coast next to an
+ * atlas one). A hole is only dropped when it is *new* — bounded by more than
+ * one input (or by fresh intersection points) — and both small and thin; a
+ * hole one input already had (an enclave, a lake) is kept untouched, islands
+ * are never touched, and no vertex is moved: the outline keeps every point
+ * the union produced.
+ */
+export function removeMergeGaps(merged, inputs, { maxAreaKm2 = 25, maxThinness = 0.25 } = {}) {
+  const geom = merged && merged.geometry;
+  const polys = polygonsOf(geom);
+  if (!polys.length || !turf) return merged;
+  const owners = new Map(); // vertex → set of input indexes it belongs to
+  (inputs || []).forEach((f, idx) => {
+    polygonsOf(f && f.geometry).forEach(rings => rings.forEach(ring => ring.forEach(c => {
+      const k = vertexKey(c);
+      let set = owners.get(k);
+      if (!set) owners.set(k, set = new Set());
+      set.add(idx);
+    })));
+  });
+  let removed = 0;
+  const out = polys.map(rings => {
+    const kept = [rings[0]];
+    for (let i = 1; i < rings.length; i++) {
+      const ring = rings[i];
+      const contributors = new Set();
+      let fresh = false; // intersection points: vertices no input had
+      for (const c of ring) {
+        const set = owners.get(vertexKey(c));
+        if (set) set.forEach(x => contributors.add(x));else fresh = true;
+      }
+      const newHole = contributors.size + (fresh ? 1 : 0) >= 2;
+      if (!newHole) {
+        kept.push(ring);
+        continue;
+      }
+      let area = 0,
+        perimeter = 0;
+      try {
+        area = turf.area(turf.polygon([ring]));
+        perimeter = turf.length(turf.lineString(ring), {
+          units: 'meters'
+        });
+      } catch (e) {
+        kept.push(ring);
+        continue;
+      }
+      const thinness = perimeter > 0 ? 4 * Math.PI * area / (perimeter * perimeter) : 1;
+      if (area <= maxAreaKm2 * 1e6 && thinness <= maxThinness) {
+        removed++;
+        continue;
+      }
+      kept.push(ring);
+    }
+    return kept;
+  });
+  if (!removed) return merged;
+  return {
+    ...merged,
+    geometry: geom.type === 'Polygon' ? {
+      type: 'Polygon',
+      coordinates: out[0]
+    } : {
+      type: 'MultiPolygon',
+      coordinates: out
+    }
+  };
 }
 
 export function commitMergedFeature(layers, merged, name) {
@@ -209,14 +327,16 @@ export function commitMergedFeature(layers, merged, name) {
     if (S.curveModeLayer === l) exitCurveEdgeMode();
     S.drawnItems.removeLayer(l);
   });
+  // Rendered at Leaflet's default smoothFactor (1 px) like every drawn or
+  // loaded shape — the old smoothFactor: 2 made a merged outline visibly
+  // coarser than the shapes it came from.
   const layer = L.geoJSON(merged, {
     style: {
       color,
       fillColor: color,
       fillOpacity: 1,
       weight: 0,
-      dashArray: null,
-      smoothFactor: 2
+      dashArray: null
     }
   }).getLayers()[0];
   if (!layer) return null;
@@ -495,30 +615,28 @@ export function loadGlobalLandmass(level) {
       const landGeo = topojson.feature(topo, topo.objects.land);
       const list = [];
       const feats = landGeo.type === 'FeatureCollection' ? landGeo.features : [landGeo];
+      // world-atlas land is geostitched across ±180° — every polygon is cut at
+      // the antimeridian (usually a no-op) so no ring spans the whole map.
+      const pushPolygon = (coords, properties) => {
+        for (const part of splitPolygonAtAntimeridian(coords)) {
+          const poly = {
+            type: 'Feature',
+            properties: properties || {},
+            geometry: { type: 'Polygon', coordinates: part }
+          };
+          poly.bbox = computeGeoBbox(poly.geometry);
+          let count = 0;
+          part.forEach(r => count += r.length);
+          poly._isContinent = count > 3000;
+          list.push(poly);
+        }
+      };
       feats.forEach(f => {
         if (!f.geometry) return;
         if (f.geometry.type === 'MultiPolygon') {
-          f.geometry.coordinates.forEach(coords => {
-            const poly = {
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'Polygon',
-                coordinates: coords
-              }
-            };
-            poly.bbox = computeGeoBbox(poly.geometry);
-            let count = 0;
-            coords.forEach(r => count += r.length);
-            poly._isContinent = count > 3000;
-            list.push(poly);
-          });
+          f.geometry.coordinates.forEach(coords => pushPolygon(coords, {}));
         } else if (f.geometry.type === 'Polygon') {
-          f.bbox = computeGeoBbox(f.geometry);
-          let count = 0;
-          f.geometry.coordinates.forEach(r => count += r.length);
-          f._isContinent = count > 3000;
-          list.push(f);
+          pushPolygon(f.geometry.coordinates, f.properties);
         }
       });
       if (list.length === 0) throw new Error('No land features parsed');

@@ -79,7 +79,7 @@ export function MobileHeader() {
         {/* overflow menu — slides down from topbar */}
         {menuOpen && (
           <div className="mt-2 mx-1 bg-slate-900/95 backdrop-blur-xl border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden animate-[dockIn_0.25s_ease]">
-            <div className="grid grid-cols-3 gap-1 p-2">
+            <div className="grid grid-cols-4 gap-1 p-2">
               <button onClick={() => { setMenuOpen(false); actions.undoHistory(); }} id="btn-undo-mobile-menu" className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
                 <span className="w-9 h-9 grid place-items-center rounded-xl bg-slate-800 text-slate-300"><Icon name="undo-2" className="w-5 h-5" /></span>
                 <span className="text-[10px] font-bold">Undo</span>
@@ -87,6 +87,14 @@ export function MobileHeader() {
               <button onClick={() => { setMenuOpen(false); actions.redoHistory(); }} id="btn-redo-mobile-menu" className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
                 <span className="w-9 h-9 grid place-items-center rounded-xl bg-slate-800 text-slate-300"><Icon name="redo-2" className="w-5 h-5" /></span>
                 <span className="text-[10px] font-bold">Redo</span>
+              </button>
+              <button onClick={() => { setMenuOpen(false); actions.openCountrySearch(); }} id="btn-country-mobile-menu" className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
+                <span className="w-9 h-9 grid place-items-center rounded-xl bg-indigo-500/15 text-indigo-300"><Icon name="globe-2" className="w-5 h-5" /></span>
+                <span className="text-[10px] font-bold">Country</span>
+              </button>
+              <button onClick={() => { setMenuOpen(false); actions.openAnimateDrawer(); }} className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
+                <span className="w-9 h-9 grid place-items-center rounded-xl bg-violet-500/15 text-violet-300"><Icon name="clapperboard" className="w-5 h-5" /></span>
+                <span className="text-[10px] font-bold">Animate</span>
               </button>
               <button onClick={() => { setMenuOpen(false); actions.toggleDrawer('settings-drawer'); }} className="flex flex-col items-center gap-1.5 py-3 rounded-xl hover:bg-slate-800 text-slate-300">
                 <span className="w-9 h-9 grid place-items-center rounded-xl bg-slate-800 text-slate-300"><Icon name="settings" className="w-5 h-5" /></span>
@@ -103,7 +111,7 @@ export function MobileHeader() {
             </div>
             <div className="px-3 pb-3">
               <div className="h-px bg-slate-800 mb-2" />
-              <p className="text-[10px] text-slate-500 text-center">No storage — load continents & countries from the Map panel</p>
+              <p className="text-[10px] text-slate-500 text-center">No storage — load countries from the Map panel (Country above jumps straight to the search)</p>
             </div>
           </div>
         )}
